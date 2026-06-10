@@ -11,7 +11,8 @@ function applyDeadzone(v: number): number {
 
 /**
  * Gamepad (layout standard): stick sinistro movimento, A salto,
- * X calcio, RB/RT scatto, Y cambio giocatore.
+ * X tiro/scivolata, B passaggio/contrasto, Y filtrante alto,
+ * LB cambio giocatore, RB/RT scatto.
  */
 export class GamepadSource implements InputSource {
   private state = emptyRawState();
@@ -19,7 +20,8 @@ export class GamepadSource implements InputSource {
   poll(): RawInputState {
     const s = this.state;
     s.moveX = 0; s.moveY = 0;
-    s.sprint = false; s.jump = false; s.kick = false; s.switchPlayer = false;
+    s.sprint = false; s.jump = false; s.kick = false;
+    s.pass = false; s.lob = false; s.switchPlayer = false;
 
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     for (const pad of pads) {
@@ -28,8 +30,10 @@ export class GamepadSource implements InputSource {
       s.moveY += -applyDeadzone(pad.axes[1] ?? 0);
       const btn = (i: number) => !!pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.4);
       s.jump = s.jump || btn(0); // A / Cross
-      s.kick = s.kick || btn(2); // X / Square
-      s.switchPlayer = s.switchPlayer || btn(3); // Y / Triangle
+      s.pass = s.pass || btn(1); // B / Cerchio
+      s.kick = s.kick || btn(2); // X / Quadrato
+      s.lob = s.lob || btn(3); // Y / Triangolo
+      s.switchPlayer = s.switchPlayer || btn(4); // LB
       s.sprint = s.sprint || btn(5) || btn(7); // RB o RT
     }
     s.moveX = Math.max(-1, Math.min(1, s.moveX));

@@ -160,4 +160,45 @@ export class PlayerRig {
     this.legR.rotation.x = 1.3;
     this.armL.rotation.x = 0.8;
   }
+
+  /** Scivolata: corpo disteso all'indietro, gamba tesa in avanti. */
+  slidePose(dt: number): void {
+    this.body.rotation.x = THREE.MathUtils.damp(this.body.rotation.x, -1.15, 18, dt);
+    this.body.position.y = THREE.MathUtils.damp(this.body.position.y, -0.52, 18, dt);
+    this.legL.rotation.x = THREE.MathUtils.damp(this.legL.rotation.x, 1.5, 18, dt);
+    this.legR.rotation.x = THREE.MathUtils.damp(this.legR.rotation.x, 1.1, 18, dt);
+    this.armL.rotation.x = -0.6;
+    this.armR.rotation.x = -0.9;
+  }
+
+  /** Tuffo del portiere: corpo ruotato di lato, braccia tese verso la palla. */
+  divePose(side: number, dt: number): void {
+    this.body.rotation.z = THREE.MathUtils.damp(this.body.rotation.z, side * 1.25, 14, dt);
+    this.body.rotation.x = THREE.MathUtils.damp(this.body.rotation.x, -0.2, 14, dt);
+    const reach = side >= 0 ? this.armL : this.armR;
+    const other = side >= 0 ? this.armR : this.armL;
+    reach.rotation.z = THREE.MathUtils.damp(reach.rotation.z, side * 2.7, 16, dt);
+    other.rotation.z = THREE.MathUtils.damp(other.rotation.z, side * 1.6, 16, dt);
+    this.legL.rotation.x = 0.4;
+    this.legR.rotation.x = -0.3;
+  }
+
+  /** Stordito dopo un fallo subito: barcolla. */
+  stunPose(time: number): void {
+    this.body.rotation.x = 0.25 + Math.sin(time * 14) * 0.08;
+    this.body.rotation.z = Math.sin(time * 9) * 0.12;
+    this.armL.rotation.z = 0.5;
+    this.armR.rotation.z = -0.5;
+  }
+
+  /** Ritorno graduale alla posa neutra (rialzata). */
+  recoverPose(dt: number): void {
+    this.body.rotation.x = THREE.MathUtils.damp(this.body.rotation.x, 0, 10, dt);
+    this.body.rotation.z = THREE.MathUtils.damp(this.body.rotation.z, 0, 10, dt);
+    this.body.position.y = THREE.MathUtils.damp(this.body.position.y, 0, 10, dt);
+    for (const g of [this.armL, this.armR, this.legL, this.legR]) {
+      g.rotation.x = THREE.MathUtils.damp(g.rotation.x, 0, 10, dt);
+      g.rotation.z = THREE.MathUtils.damp(g.rotation.z, 0, 10, dt);
+    }
+  }
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import {
   DOUBLE_JUMP_SPEED,
+  GETUP_DURATION,
   GRAVITY,
   HALF_LENGTH,
   HALF_WIDTH,
@@ -8,11 +9,14 @@ import {
   PLAYER_ACCEL,
   PLAYER_DECEL,
   PLAYER_RADIUS,
+  SLIDE_DURATION,
+  SLIDE_SPEED,
   SPRINT_SPEED,
   STAMINA_DRAIN,
   STAMINA_MAX,
   STAMINA_MIN_SPRINT,
   STAMINA_REGEN,
+  STUN_DURATION,
   WALK_SPEED,
 } from '../core/constants';
 import { dampAngle } from '../core/math';
@@ -29,9 +33,15 @@ export interface PlayerEvents {
   onJump?: (player: Player, double: boolean) => void;
 }
 
+export type PlayerRole = 'campo' | 'portiere';
+
+/** Azioni speciali che sospendono il controllo normale del giocatore. */
+export type PlayerAction = 'normale' | 'scivolata' | 'tuffo' | 'stordito' | 'rialzo';
+
 /**
- * Giocatore di movimento: cinematica con inerzia, scatto con stamina,
- * salto e doppio salto sovrumani, rig procedurale animato via codice.
+ * Giocatore: cinematica con inerzia, scatto con stamina, salto e doppio
+ * salto sovrumani, azioni speciali (scivolata, tuffo del portiere,
+ * stordimento da fallo), rig procedurale animato via codice.
  */
 export class Player {
   readonly rig: PlayerRig;
@@ -44,15 +54,24 @@ export class Player {
   sprinting = false;
   /** Carica del tiro corrente (0..1), gestita da BallControl, letta dal rig. */
   kickCharge = 0;
-  readonly team: number; // 0 = attacca +x, 1 = attacca -x
+  action: PlayerAction = 'normale';
+  actionTimer = 0;
+  /** Lato del tuffo (-1/+1) per la posa del rig. */
+  diveSide = 1;
+  /** Posizione di formazione assegnata (riferimento per kickoff e IA). */
+  readonly homePosition = new THREE.Vector3();
+  readonly team: number; // 0 = attacca +x, 1 = attacca -x (vedi Match)
+  readonly role: PlayerRole;
   readonly name: string;
   events: PlayerEvents = {};
 
   private wantSprint = false;
+  private actionTime = 0; // tempo trascorso nell'azione corrente
 
-  constructor(name: string, team: number, colors: RigColors) {
+  constructor(name: string, team: number, role: PlayerRole, colors: RigColors) {
     this.name = name;
     this.team = team;
+    this.role = role;
     this.rig = new PlayerRig(colors);
   }
 
@@ -64,7 +83,48 @@ export class Player {
     return this.sprinting ? SPRINT_SPEED : WALK_SPEED;
   }
 
+  /** true se il giocatore può ricevere comandi di movimento. */
+  get controllable(): boolean {
+    return this.action === 'normale';
+  }
+
+  /** Avvia una scivolata nella direzione in cui guarda. */
+  startSlide(): void {
+    if (this.action !== 'normale' || !this.onGround) return;
+    this.action = 'scivolata';
+    this.actionTimer = SLIDE_DURATION;
+    this.actionTime = 0;
+    const dir = this.forward();
+    this.velocity.x = dir.x * SLIDE_SPEED;
+    this.velocity.z = dir.z * SLIDE_SPEED;
+  }
+
+  /** Tuffo del portiere verso una velocità calcolata dall'IA. */
+  startDive(vel: THREE.Vector3, duration: number): void {
+    if (this.action === 'tuffo') return;
+    this.action = 'tuffo';
+    this.actionTimer = duration;
+    this.actionTime = 0;
+    this.velocity.copy(vel);
+    this.diveSide = Math.sign(
+      vel.x * Math.cos(this.facing) - vel.z * Math.sin(this.facing),
+    ) || 1;
+    this.onGround = false;
+  }
+
+  /** Stordimento dopo un fallo subito. */
+  stun(): void {
+    this.action = 'stordito';
+    this.actionTimer = STUN_DURATION;
+    this.actionTime = 0;
+  }
+
   update(dt: number, cmd: PlayerCommand | null): void {
+    if (this.action !== 'normale') {
+      this.updateAction(dt);
+      return;
+    }
+
     const move = cmd?.moveDir ?? null;
     const moveLen = move ? Math.min(1, move.length()) : 0;
 
@@ -114,7 +174,76 @@ export class Player {
       }
     }
 
-    // --- gravità e contatto col terreno ---
+    this.integrate(dt);
+
+    // --- orientamento verso la direzione di movimento ---
+    const speed = Math.hypot(this.velocity.x, this.velocity.z);
+    if (speed > 0.5) {
+      const targetYaw = Math.atan2(this.velocity.x, this.velocity.z);
+      this.facing = dampAngle(this.facing, targetYaw, 12, dt);
+    }
+
+    // --- sincronizza il rig ---
+    this.syncRig();
+    this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge);
+  }
+
+  /** Gestione delle azioni speciali che sospendono il controllo. */
+  private updateAction(dt: number): void {
+    this.actionTimer -= dt;
+    this.actionTime += dt;
+
+    switch (this.action) {
+      case 'scivolata': {
+        // attrito della scivolata
+        const f = Math.max(0, 1 - 3.2 * dt);
+        this.velocity.x *= f;
+        this.velocity.z *= f;
+        this.integrate(dt);
+        this.rig.slidePose(dt);
+        if (this.actionTimer <= 0) {
+          this.action = 'rialzo';
+          this.actionTimer = GETUP_DURATION;
+        }
+        break;
+      }
+      case 'tuffo': {
+        this.integrate(dt);
+        this.rig.divePose(this.diveSide, dt);
+        if (this.actionTimer <= 0 && this.onGround) {
+          this.action = 'rialzo';
+          this.actionTimer = GETUP_DURATION + 0.15;
+          this.velocity.set(0, 0, 0);
+        }
+        break;
+      }
+      case 'stordito': {
+        const f = Math.max(0, 1 - 6 * dt);
+        this.velocity.x *= f;
+        this.velocity.z *= f;
+        this.integrate(dt);
+        this.rig.stunPose(this.actionTime);
+        if (this.actionTimer <= 0) {
+          this.action = 'rialzo';
+          this.actionTimer = GETUP_DURATION * 0.5;
+        }
+        break;
+      }
+      case 'rialzo':
+      default: {
+        this.velocity.x = 0;
+        this.velocity.z = 0;
+        this.integrate(dt);
+        this.rig.recoverPose(dt);
+        if (this.actionTimer <= 0) this.action = 'normale';
+        break;
+      }
+    }
+    this.syncRig();
+  }
+
+  /** Gravità, integrazione della posizione, terreno e limiti dell'arena. */
+  private integrate(dt: number): void {
     if (!this.onGround) {
       this.velocity.y -= GRAVITY * dt;
     }
@@ -128,7 +257,6 @@ export class Player {
       this.onGround = false;
     }
 
-    // --- limiti dell'arena (i muri fermano anche i giocatori) ---
     const mx = HALF_LENGTH - PLAYER_RADIUS;
     const mz = HALF_WIDTH - PLAYER_RADIUS;
     if (Math.abs(this.position.x) > mx) {
@@ -139,18 +267,11 @@ export class Player {
       this.position.z = Math.sign(this.position.z) * mz;
       this.velocity.z = 0;
     }
+  }
 
-    // --- orientamento verso la direzione di movimento ---
-    const speed = Math.hypot(this.velocity.x, this.velocity.z);
-    if (speed > 0.5) {
-      const targetYaw = Math.atan2(this.velocity.x, this.velocity.z);
-      this.facing = dampAngle(this.facing, targetYaw, 12, dt);
-    }
-
-    // --- sincronizza il rig ---
+  private syncRig(): void {
     this.rig.root.position.copy(this.position);
     this.rig.root.rotation.y = this.facing;
-    this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge);
   }
 
   /** Direzione frontale sul piano (unitaria). */

@@ -73,16 +73,22 @@ export class TouchSource implements InputSource {
     stickZone.addEventListener('pointercancel', endStick);
 
     // --- Pulsanti (lato destro) ---
-    this.makeButton('TIRO', 'right:28px;bottom:96px;width:88px;height:88px;', (down) => {
+    this.makeButton('TIRO', 'right:24px;bottom:104px;width:84px;height:84px;', (down) => {
       this.state.kick = down;
     });
-    this.makeButton('SALTO', 'right:128px;bottom:40px;width:74px;height:74px;', (down) => {
+    this.makeButton('PASSA', 'right:116px;bottom:52px;width:74px;height:74px;', (down) => {
+      this.state.pass = down;
+    });
+    this.makeButton('LANCIO', 'right:122px;bottom:148px;width:60px;height:60px;', (down) => {
+      this.state.lob = down;
+    });
+    this.makeButton('SALTO', 'right:34px;bottom:208px;width:66px;height:66px;', (down) => {
       this.state.jump = down;
     });
-    this.makeButton('SCATTO', 'right:36px;bottom:208px;width:70px;height:70px;', (down) => {
+    this.makeButton('SCATTO', 'right:206px;bottom:36px;width:62px;height:62px;', (down) => {
       this.state.sprint = down;
     });
-    this.makeButton('CAMBIO', 'right:150px;bottom:172px;width:58px;height:58px;', (down) => {
+    this.makeButton('CAMBIO', 'right:208px;bottom:122px;width:52px;height:52px;', (down) => {
       this.state.switchPlayer = down;
     });
 

@@ -7,11 +7,22 @@ export interface RawInputState {
   sprint: boolean;
   jump: boolean;
   kick: boolean;
+  pass: boolean;
+  lob: boolean;
   switchPlayer: boolean;
 }
 
 export function emptyRawState(): RawInputState {
-  return { moveX: 0, moveY: 0, sprint: false, jump: false, kick: false, switchPlayer: false };
+  return {
+    moveX: 0,
+    moveY: 0,
+    sprint: false,
+    jump: false,
+    kick: false,
+    pass: false,
+    lob: false,
+    switchPlayer: false,
+  };
 }
 
 /** Frame di input unificato, con rilevamento dei fronti (pressed/released). */
@@ -23,6 +34,8 @@ export interface InputFrame {
   kickHeld: boolean;
   kickPressed: boolean;
   kickReleased: boolean;
+  passPressed: boolean;
+  lobPressed: boolean;
   switchPressed: boolean;
 }
 

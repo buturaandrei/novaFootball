@@ -1,5 +1,6 @@
-// Smoke test headless: carica il gioco, entra in campo, simula input
-// e cattura screenshot + errori console. Uso: node scripts/smoke-test.mjs [url]
+// Smoke test headless: carica il gioco, entra in campo, simula input e
+// verifica i criteri della milestone corrente (passaggi, portiere, goal,
+// cronometro, fischio finale). Uso: node scripts/smoke-test.mjs [url]
 import { chromium } from 'playwright';
 
 const url = process.argv[2] ?? 'http://localhost:4517/';
@@ -14,67 +15,154 @@ page.on('console', (msg) => {
 });
 page.on('pageerror', (err) => errors.push(String(err)));
 
+const check = (name, ok) => {
+  console.log(`${ok ? '✓' : '✗'} ${name}`);
+  if (!ok) errors.push(`verifica fallita: ${name}`);
+};
+
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: '/tmp/shot-menu.png' });
 
 // entra in campo
-await page.mouse.click(640, 360);
+await page.mouse.click(400, 225);
 await page.waitForTimeout(800);
 await page.screenshot({ path: '/tmp/shot-kickoff.png' });
 
-// corri verso la palla e oltre
+// --- squadre complete ---
+const counts = await page.evaluate(() => {
+  const g = window.__nova;
+  return {
+    players: g.players.length,
+    gks: g.players.filter((p) => p.role === 'portiere').length,
+  };
+});
+check('14 giocatori in campo (7v7)', counts.players === 14);
+check('2 portieri', counts.gks === 2);
+
+// --- movimento e doppio salto (input reali da tastiera) ---
 await page.keyboard.down('KeyD');
 await page.keyboard.down('ShiftLeft');
-await page.waitForTimeout(1800);
-await page.screenshot({ path: '/tmp/shot-sprint.png' });
-await page.keyboard.up('ShiftLeft');
-
-// doppio salto
+await page.waitForTimeout(1200);
 await page.keyboard.press('Space');
 await page.waitForTimeout(250);
 await page.keyboard.press('Space');
-await page.waitForTimeout(400);
-await page.screenshot({ path: '/tmp/shot-jump.png' });
+await page.waitForTimeout(300);
+await page.screenshot({ path: '/tmp/shot-sprint.png' });
+await page.keyboard.up('ShiftLeft');
 await page.keyboard.up('KeyD');
-await page.waitForTimeout(800);
 
-// tiro caricato al massimo verso la porta
-await page.keyboard.down('KeyD');
-await page.waitForTimeout(600);
-await page.keyboard.down('KeyJ');
-await page.waitForTimeout(1100);
-await page.screenshot({ path: '/tmp/shot-charge.png' });
-await page.keyboard.up('KeyJ');
-await page.keyboard.up('KeyD');
-await page.waitForTimeout(900);
-await page.screenshot({ path: '/tmp/shot-shot.png' });
-await page.waitForTimeout(2500);
-await page.screenshot({ path: '/tmp/shot-after.png' });
+// --- passaggio rasoterra: possesso a un compagno, palla in movimento ---
+const passOk = await page.evaluate(() => {
+  const g = window.__nova;
+  const passer = g.teams[0].fieldPlayers[0];
+  g.ballControl.givePossession(passer);
+  const ok = g.ballControl.pass(passer, null, false);
+  return ok && g.ball.velocity.length() > 8;
+});
+check('passaggio rasoterra eseguito', passOk);
+try {
+  await page.waitForFunction(
+    () => {
+      const g = window.__nova;
+      return g.ballControl.owner && g.ballControl.owner.team === 0;
+    },
+    { timeout: 20000 },
+  );
+  check('il compagno riceve il passaggio', true);
+} catch {
+  check('il compagno riceve il passaggio', false);
+}
+await page.screenshot({ path: '/tmp/shot-pass.png' });
 
-// verifica del flusso goal: spara la palla dentro la porta a +x
+// --- parata del portiere: tiro centrale parabile ---
+const saveResult = await page.evaluate(() => {
+  const g = window.__nova;
+  g.ball.position.set(16, 1, 0);
+  g.ball.velocity.set(14, 1.5, 0);
+  return g.match.score.join('-');
+});
+try {
+  await page.waitForFunction(
+    () => {
+      const g = window.__nova;
+      return g.ballControl.heldBy !== null || g.ball.velocity.x < 0;
+    },
+    { timeout: 25000 },
+  );
+  const noGoal = await page.evaluate(
+    (before) => window.__nova.match.score.join('-') === before,
+    saveResult,
+  );
+  check('il portiere para il tiro centrale', noGoal);
+} catch {
+  check('il portiere para il tiro centrale', false);
+}
+await page.screenshot({ path: '/tmp/shot-save.png' });
+
+// --- goal: tiro fortissimo sotto l'incrocio, fuori portata del tuffo ---
+// (prima aspetta che il portiere abbia rinviato la palla della parata)
+try {
+  await page.waitForFunction(
+    () => window.__nova.ballControl.heldBy === null && window.__nova.match.phase === 'playing',
+    { timeout: 30000 },
+  );
+} catch {
+  errors.push('il portiere non ha mai rinviato la palla');
+}
 await page.evaluate(() => {
   const g = window.__nova;
-  g.ball.position.set(20, 1, 0);
-  g.ball.velocity.set(24, 1, 0);
+  g.ball.position.set(28.5, 1.2, 3.1);
+  g.ball.velocity.set(34, 2, 0);
 });
-// nel rendering software headless il tempo di gioco scorre più lento del
-// wall-clock: si fa polling sullo stato invece di attese fisse
 try {
   await page.waitForFunction(() => window.__nova.match.score[0] === 1, { timeout: 30000 });
+  check('goal sul tiro imparabile', true);
 } catch {
-  errors.push('goal non registrato entro 30s');
+  check('goal sul tiro imparabile', false);
 }
 await page.screenshot({ path: '/tmp/shot-goal.png' });
-console.log('Punteggio dopo il tiro in porta:', await page.evaluate(() => window.__nova.match.score.join('-')));
 try {
   await page.waitForFunction(() => window.__nova.match.phase === 'playing', { timeout: 60000 });
-  console.log('Kickoff dopo la celebrazione: ok');
+  check('kickoff dopo la celebrazione', true);
 } catch {
-  errors.push('kickoff non avvenuto entro 60s');
+  check('kickoff dopo la celebrazione', false);
 }
 
-// stato di gioco e FPS dal DOM
+// --- cronometro che scorre ---
+const clockA = await page.evaluate(() => window.__nova.match.clock);
+await page.waitForTimeout(2500);
+const clockB = await page.evaluate(() => window.__nova.match.clock);
+check('il cronometro scorre', clockB < clockA);
+
+// --- fischio finale e rivincita ---
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.match.half = 2;
+  g.match.clock = 0.3;
+});
+try {
+  await page.waitForFunction(() => window.__nova.match.phase === 'fulltime', { timeout: 20000 });
+  check('fischio finale al termine del 2º tempo', true);
+} catch {
+  check('fischio finale al termine del 2º tempo', false);
+}
+await page.screenshot({ path: '/tmp/shot-fulltime.png' });
+// a pochi FPS (rendering software) un press rapido cade tra due frame:
+// tieni premuto abbastanza a lungo da essere campionato
+await page.keyboard.down('KeyJ');
+await page.waitForTimeout(800);
+await page.keyboard.up('KeyJ');
+try {
+  await page.waitForFunction(
+    () => window.__nova.match.phase === 'playing' && window.__nova.match.half === 1,
+    { timeout: 20000 },
+  );
+  check('rivincita dopo il fischio finale', true);
+} catch {
+  check('rivincita dopo il fischio finale', false);
+}
+
 const hudText = await page.evaluate(() => document.body.innerText.replace(/\n+/g, ' | '));
 console.log('HUD:', hudText);
 console.log('Errori console:', errors.length ? errors : 'nessuno');

@@ -35,8 +35,10 @@ node scripts/smoke-test.mjs
 | Movimento | WASD / frecce | stick sinistro | joystick virtuale (metà sinistra) |
 | Scatto | Maiusc | RB / RT | pulsante SCATTO |
 | Salto / doppio salto | Spazio | A | pulsante SALTO |
-| Tiro (tieni premuto per caricare) | J | X | pulsante TIRO |
-| Cambio giocatore | Q / Tab | Y | pulsante CAMBIO |
+| Tiro (carica) / scivolata in difesa | J | X | pulsante TIRO |
+| Passaggio rasoterra / contrasto in piedi | K | B | pulsante PASSA |
+| Filtrante alto | L | Y | pulsante LANCIO |
+| Cambio giocatore | Q / Tab | LB | pulsante CAMBIO |
 | Mostra/nascondi aiuto | H | — | — |
 
 ## Stato delle milestone
@@ -52,7 +54,21 @@ node scripts/smoke-test.mjs
      anticipo sulla palla, smorzamento a molla, FOV che si allarga in scatto
    - Goal, celebrazione orbitale, kickoff; audio sintetizzato (calci, rimbalzi, muri,
      fischio, boato); input completo tastiera + gamepad + touch
-2. ⬜ Squadre complete, possesso/passaggi/tiri/contrasti, portieri, goal e regole
+2. ✅ **Squadre complete, possesso/passaggi/tiri/contrasti, portieri, goal e regole**
+   - 7v7: formazione 2-3-1 + portiere per squadra (GELO vs OMBRA, rose con nomi)
+   - Passaggio rasoterra e filtrante alto, entrambi con anticipo sul movimento
+     del compagno; cambio automatico al ricevitore
+   - Contrasti in piedi e in scivolata con finestra di timing; corpo colpito
+     senza palla = fallo → punizione semplificata (avversari a distanza,
+     battuta manuale o automatica per l'IA)
+   - Portieri con IA dedicata: piazzamento sull'arco palla-porta, uscite,
+     tuffi calcolati sulla traiettoria (parabilità in funzione di velocità,
+     angolo e altezza), prese, respinte e rinvio a un compagno
+   - Due tempi da 3 minuti con cronometro, intervallo, fischio finale e
+     rivincita; stordimento di chi subisce fallo, pose dedicate del rig
+     (scivolata, tuffo, barcollamento)
+   - Nota: i compagni di movimento tengono la posizione — l'IA tattica
+     e individuale arriva con la milestone 3
 3. ⬜ IA tattica + individuale, cambio giocatore automatico, partita completa
 4. ⬜ Sistema Flux: barra, scatto e dribbling Flux per le 3 squadre
 5. ⬜ Tiro Flux con sequenza cinematica completa, parata Flux, replay dei goal

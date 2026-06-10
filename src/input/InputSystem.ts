@@ -13,6 +13,8 @@ export class InputSystem {
 
   private prevJump = false;
   private prevKick = false;
+  private prevPass = false;
+  private prevLob = false;
   private prevSwitch = false;
 
   readonly frame: InputFrame = {
@@ -23,6 +25,8 @@ export class InputSystem {
     kickHeld: false,
     kickPressed: false,
     kickReleased: false,
+    passPressed: false,
+    lobPressed: false,
     switchPressed: false,
   };
 
@@ -37,6 +41,8 @@ export class InputSystem {
     let sprint = false;
     let jump = false;
     let kick = false;
+    let pass = false;
+    let lob = false;
     let sw = false;
 
     for (const src of this.sources) {
@@ -46,6 +52,8 @@ export class InputSystem {
       sprint = sprint || s.sprint;
       jump = jump || s.jump;
       kick = kick || s.kick;
+      pass = pass || s.pass;
+      lob = lob || s.lob;
       sw = sw || s.switchPlayer;
     }
 
@@ -63,10 +71,14 @@ export class InputSystem {
     f.kickHeld = kick;
     f.kickPressed = kick && !this.prevKick;
     f.kickReleased = !kick && this.prevKick;
+    f.passPressed = pass && !this.prevPass;
+    f.lobPressed = lob && !this.prevLob;
     f.switchPressed = sw && !this.prevSwitch;
 
     this.prevJump = jump;
     this.prevKick = kick;
+    this.prevPass = pass;
+    this.prevLob = lob;
     this.prevSwitch = sw;
     return f;
   }

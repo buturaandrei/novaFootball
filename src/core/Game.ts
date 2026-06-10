@@ -7,10 +7,13 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { Arena } from '../arena/Arena';
 import { AudioSystem } from '../audio/AudioSystem';
 import { CameraDirector, CameraState } from '../camera/CameraDirector';
+import { Goalkeeper } from '../ai/Goalkeeper';
 import { Player } from '../entities/Player';
 import { InputSystem } from '../input/InputSystem';
 import { BallControl } from '../match/BallControl';
 import { Match } from '../match/Match';
+import { Tackles } from '../match/Tackles';
+import { Team } from '../match/Team';
 import { Ball } from '../physics/Ball';
 import { ChargeRing } from '../vfx/ChargeRing';
 import { ParticlePool } from '../vfx/ParticlePool';
@@ -20,25 +23,30 @@ import { PLAYER_RADIUS } from './constants';
 
 /**
  * Cuore del gioco: collega input, fisica, regia, vfx, audio, match e HUD.
- * Milestone 1: arena, movimento, palla fisica, 1v1 senza IA
- * (Q/Tab passa il controllo da un giocatore all'altro per testare entrambi).
+ * Milestone 2: squadre complete 7v7 (formazione 2-3-1 + portiere con IA
+ * dedicata), passaggi rasoterra/filtranti, contrasti con falli e punizioni
+ * semplificate, due tempi con cronometro. L'IA di movimento arriva nella
+ * milestone 3: i compagni tengono la posizione di formazione.
  */
 export class Game {
   private renderer: THREE.WebGLRenderer;
   private composer: EffectComposer;
   private scene = new THREE.Scene();
-  private time = new Time();
+  readonly time = new Time();
   private clock = new THREE.Clock();
 
   private arena = new Arena();
   readonly ball = new Ball();
+  readonly teams: Team[];
   readonly players: Player[];
-  private activeIndex = 0;
+  private activePlayerRef: Player;
 
   private input: InputSystem;
   private director: CameraDirector;
-  private ballControl: BallControl;
+  readonly ballControl: BallControl;
   readonly match: Match;
+  private tackles: Tackles;
+  private goalkeepers: Goalkeeper[];
   private audio = new AudioSystem();
   private particles = new ParticlePool(768);
   private chargeRing = new ChargeRing();
@@ -46,6 +54,7 @@ export class Game {
   private activeMarker: THREE.Mesh;
 
   private started = false;
+  private opponentFreeKickTimer = 0;
 
   // scratch
   private camForward = new THREE.Vector3();
@@ -82,11 +91,34 @@ export class Game {
     this.scene.add(this.particles.points);
     this.scene.add(this.chargeRing.mesh);
 
-    // --- giocatori: 1v1, GELO (azzurro) contro OMBRA (viola) ---
-    const p1 = new Player('Kael', 0, { primary: 0x2a6f9e, secondary: 0x10222e, glow: 0x49e9ff });
-    const p2 = new Player('Vrax', 1, { primary: 0x4a2a6e, secondary: 0x1a1024, glow: 0xb44aff });
-    this.players = [p1, p2];
+    // --- squadre: GELO (giocatore) contro OMBRA ---
+    this.teams = [
+      new Team(
+        {
+          name: 'GELO',
+          defendsSide: -1,
+          color: 0x49e9ff,
+          colors: { primary: 0x2a6f9e, secondary: 0x10222e, glow: 0x49e9ff },
+          gkColors: { primary: 0x1a4a72, secondary: 0x0c1a26, glow: 0x9af2ff },
+          roster: ['Boreas', 'Ilya', 'Vesna', 'Nyra', 'Sorin', 'Mirka', 'Kael'],
+        },
+        0,
+      ),
+      new Team(
+        {
+          name: 'OMBRA',
+          defendsSide: 1,
+          color: 0xb44aff,
+          colors: { primary: 0x4a2a6e, secondary: 0x1a1024, glow: 0xb44aff },
+          gkColors: { primary: 0x32184e, secondary: 0x120a1c, glow: 0xd99aff },
+          roster: ['Tenebr', 'Nox', 'Lyrr', 'Vesper', 'Crepus', 'Umbra', 'Vrax'],
+        },
+        1,
+      ),
+    ];
+    this.players = [...this.teams[0].players, ...this.teams[1].players];
     for (const p of this.players) this.scene.add(p.object3d);
+    this.activePlayerRef = this.teams[0].fieldPlayers[this.teams[0].fieldPlayers.length - 1];
 
     // marcatore del giocatore attivo
     this.activeMarker = new THREE.Mesh(
@@ -105,20 +137,22 @@ export class Game {
     // --- sistemi di gioco ---
     this.input = new InputSystem(container);
     this.ballControl = new BallControl(this.ball, this.players);
-    this.match = new Match(this.ball, this.players, [
-      { name: 'GELO', defendsSide: -1, color: 0x49e9ff },
-      { name: 'OMBRA', defendsSide: 1, color: 0xb44aff },
-    ]);
+    this.tackles = new Tackles(this.ball, this.ballControl);
+    this.match = new Match(this.ball, this.teams);
+    this.goalkeepers = this.teams.map(
+      (team) => new Goalkeeper(team.goalkeeper, team, this.ball, this.ballControl),
+    );
 
     this.hud = new Hud(container, () => {
       this.audio.unlock();
       if (!this.started) {
         this.started = true;
-        this.match.kickoff();
+        this.match.restart();
         this.hud.showMessage('SI COMINCIA!', 1.6);
       }
     });
     this.hud.setScore(this.match);
+    this.hud.setClock(this.match.half, this.match.clock);
 
     this.wireEvents();
     this.match.kickoff();
@@ -152,9 +186,10 @@ export class Game {
       this.audio.bounce(Math.min(1, speed / 14));
     };
 
-    // calci → audio, particelle, regia
+    // calci → audio, particelle, regia, chiusura punizione
     this.ballControl.events.onKick = (info) => {
       this.audio.kick(info.power);
+      this.match.freeKickTaken();
       if (info.level >= 2) {
         this.particles.burst(this.ball.position, {
           count: 10 + info.level * 8,
@@ -172,6 +207,59 @@ export class Game {
       }
     };
 
+    // passaggi → audio, cambio automatico al ricevitore (mai togliere
+    // il controllo a chi sta per ricevere)
+    this.ballControl.events.onPass = (info) => {
+      this.audio.kick(0.25);
+      this.match.freeKickTaken();
+      if (info.passer.team === 0 && info.receiver.team === 0 && info.receiver.role === 'campo') {
+        this.setActivePlayer(info.receiver);
+      }
+    };
+
+    // contrasti → audio e falli
+    this.tackles.events.onWin = (tackler) => {
+      this.audio.bounce(0.8);
+      if (tackler.team === 0) this.setActivePlayer(this.nearestFieldPlayer(this.ball.position, tackler));
+    };
+    this.tackles.events.onFoul = (offender, victim, spot) => {
+      this.match.foul(offender, victim, spot);
+    };
+    this.match.events.onFoul = () => {
+      this.audio.whistle();
+      this.hud.showMessage('FALLO!', 1.6);
+    };
+    this.match.events.onFreeKickReady = (taker) => {
+      this.ballControl.givePossession(taker);
+      if (taker.team === 0) {
+        this.setActivePlayer(taker);
+        this.hud.showMessage('PUNIZIONE', 1.2);
+        this.opponentFreeKickTimer = 0;
+      } else {
+        this.opponentFreeKickTimer = 1.6;
+      }
+    };
+
+    // parate del portiere
+    for (const gk of this.goalkeepers) {
+      gk.events.onSave = (gkPlayer, caught) => {
+        this.audio.whoosh(1);
+        if (caught) {
+          this.hud.showMessage(`PARATA DI ${gkPlayer.name.toUpperCase()}!`, 1.6);
+        } else {
+          this.hud.showMessage('RESPINTA!', 1.2);
+        }
+        this.particles.burst(this.ball.position, {
+          count: 18,
+          color: this.teams[gkPlayer.team].color,
+          speed: 5,
+          life: 0.5,
+          size: 1.2,
+          gravity: 4,
+        });
+      };
+    }
+
     // salti → whoosh
     for (const p of this.players) {
       p.events.onJump = (_pl, double) => this.audio.whoosh(double ? 1 : 0.6);
@@ -179,13 +267,13 @@ export class Game {
 
     // goal → messaggio, boato, orbita celebrativa, esplosione di particelle
     this.match.events.onGoal = (scoringTeam, ballPos) => {
-      const teamName = scoringTeam >= 0 ? this.match.teams[scoringTeam].name : '';
+      const teamName = scoringTeam >= 0 ? this.teams[scoringTeam].name : '';
       this.hud.showMessage(`GOAL! ${teamName}`, 2.8);
       this.hud.setScore(this.match);
       this.audio.whistle();
       this.audio.goalRoar();
       this.director.request(CameraState.Goal, { focus: ballPos });
-      const color = scoringTeam >= 0 ? this.match.teams[scoringTeam].color : 0xffffff;
+      const color = scoringTeam >= 0 ? this.teams[scoringTeam].color : 0xffffff;
       this.particles.burst(ballPos.clone().setY(Math.max(1, ballPos.y)), {
         count: 120,
         color,
@@ -197,11 +285,47 @@ export class Game {
     };
     this.match.events.onKickoff = () => {
       this.director.request(CameraState.OpenPlay, { cut: true });
+      this.setActivePlayer(this.nearestFieldPlayer(this.ball.position));
+    };
+    this.match.events.onHalftime = () => {
+      this.audio.whistle();
+      this.hud.showMessage('INTERVALLO', 2.5);
+    };
+    this.match.events.onFulltime = () => {
+      this.audio.whistle();
+      const [a, b] = this.match.score;
+      const result =
+        a === b
+          ? `PAREGGIO ${a}–${b}`
+          : a > b
+            ? `VITTORIA ${this.teams[0].name} ${a}–${b}`
+            : `VITTORIA ${this.teams[1].name} ${b}–${a}`;
+      this.hud.showMessage(result, 6);
     };
   }
 
   get activePlayer(): Player {
-    return this.players[this.activeIndex];
+    return this.activePlayerRef;
+  }
+
+  private setActivePlayer(p: Player | null): void {
+    if (!p || p.team !== 0 || p.role !== 'campo') return;
+    this.activePlayerRef = p;
+  }
+
+  /** Giocatore di movimento della squadra 0 più vicino a un punto. */
+  private nearestFieldPlayer(point: THREE.Vector3, exclude?: Player): Player {
+    let best = this.teams[0].fieldPlayers[0];
+    let bestDist = Infinity;
+    for (const p of this.teams[0].fieldPlayers) {
+      if (p === exclude) continue;
+      const d = p.position.distanceTo(point);
+      if (d < bestDist) {
+        bestDist = d;
+        best = p;
+      }
+    }
+    return best;
   }
 
   start(): void {
@@ -214,12 +338,11 @@ export class Game {
     const dt = this.time.update(rawDt);
 
     const frame = this.input.update();
+    const active = this.activePlayer;
 
-    // cambio giocatore manuale (in milestone 3 arriverà anche quello automatico)
+    // cambio giocatore manuale: il compagno più vicino alla palla
     if (frame.switchPressed) {
-      this.activeIndex = (this.activeIndex + 1) % this.players.length;
-      const color = this.match.teams[this.activePlayer.team].color;
-      (this.activeMarker.material as THREE.MeshBasicMaterial).color.setHex(color);
+      this.setActivePlayer(this.nearestFieldPlayer(this.ball.position, active));
     }
 
     // input camera-relative
@@ -233,34 +356,71 @@ export class Game {
       .addScaledVector(this.camRight, frame.moveX)
       .addScaledVector(this.camForward, frame.moveY);
 
-    const playing = this.match.phase === 'playing' && this.started;
+    const phase = this.match.phase;
+    const playing = (phase === 'playing' || phase === 'freeKick') && this.started;
 
-    // aggiorna giocatori (il non attivo resta fermo: 1v1 senza IA)
-    for (let i = 0; i < this.players.length; i++) {
-      const p = this.players[i];
-      const cmd = playing && i === this.activeIndex
-        ? { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed }
-        : null;
-      p.update(dt, cmd);
-      p.rig.setGlow(i === this.activeIndex ? 2.6 : 1.2);
+    // rivincita a fischio finale
+    if (phase === 'fulltime' && (frame.kickPressed || frame.passPressed)) {
+      this.match.restart();
+      this.hud.setScore(this.match);
+      this.hud.showMessage('SI RICOMINCIA!', 1.6);
     }
+
+    // --- azioni contestuali del giocatore attivo ---
+    if (playing) {
+      const hasBall = this.ballControl.owner === this.activePlayer;
+      if (hasBall) {
+        if (frame.passPressed) this.ballControl.pass(this.activePlayer, this.moveDir, false);
+        else if (frame.lobPressed) this.ballControl.pass(this.activePlayer, this.moveDir, true);
+      } else if (phase === 'playing') {
+        if (frame.passPressed) this.tackles.standing(this.activePlayer);
+        else if (frame.kickPressed) this.tackles.slide(this.activePlayer);
+      }
+    }
+
+    // punizione dell'avversario: batte da solo dopo una pausa
+    if (phase === 'freeKick' && this.opponentFreeKickTimer > 0) {
+      this.opponentFreeKickTimer -= dt;
+      if (this.opponentFreeKickTimer <= 0 && this.match.freeKickTaker) {
+        this.ballControl.pass(this.match.freeKickTaker, null, false);
+      }
+    }
+
+    // --- aggiornamento giocatori ---
+    const activeNow = this.activePlayer; // può essere cambiato dalle azioni sopra
+    for (const team of this.teams) {
+      for (const p of team.players) {
+        if (p.role === 'portiere') continue; // gestiti dai controller
+        const cmd = playing && p === activeNow
+          ? { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed }
+          : null;
+        p.update(dt, cmd);
+        p.rig.setGlow(p === activeNow ? 2.6 : 1.2);
+      }
+    }
+    for (const gk of this.goalkeepers) gk.update(dt);
     this.resolvePlayerCollisions();
 
-    // possesso, dribbling, tiro
+    // possesso, dribbling, tiro, contrasti
     if (playing) {
-      this.ballControl.update(dt, this.activePlayer, frame.kickHeld, frame.kickReleased, frame.moveX);
+      this.ballControl.update(dt, activeNow, frame.kickHeld, frame.kickReleased, frame.moveX);
+      this.tackles.update(dt);
     }
 
-    // fisica della palla in 2 sottopassi per stabilità sui tiri veloci
-    this.ball.update(dt / 2);
-    this.ball.update(dt / 2);
+    // fisica della palla (ferma quando è in presa al portiere)
+    if (!this.ballControl.heldBy) {
+      this.ball.update(dt / 2);
+      this.ball.update(dt / 2);
+    } else {
+      this.ballControl.pinHeldBall();
+    }
 
     this.match.update(dt);
 
     // regia
     this.director.update(rawDt, {
       ball: this.ball,
-      active: this.activePlayer,
+      active: activeNow,
       charging: this.ballControl.charging,
     });
 
@@ -271,7 +431,7 @@ export class Game {
       this.ballControl.owner ? this.ballControl.owner.position : null,
       this.time.elapsed,
     );
-    this.activeMarker.position.set(this.activePlayer.position.x, 0.03, this.activePlayer.position.z);
+    this.activeMarker.position.set(activeNow.position.x, 0.03, activeNow.position.z);
     const markerMat = this.activeMarker.material as THREE.MeshBasicMaterial;
     markerMat.opacity = 0.4 + 0.2 * Math.sin(this.time.elapsed * 5);
 
@@ -279,7 +439,8 @@ export class Game {
 
     // audio e HUD
     this.audio.update(dt);
-    this.hud.setStamina(this.activePlayer.stamina / 100);
+    this.hud.setStamina(activeNow.stamina / 100);
+    this.hud.setClock(this.match.half, this.match.clock);
     this.hud.update(rawDt);
     this.hud.tickFps(frameDt);
 

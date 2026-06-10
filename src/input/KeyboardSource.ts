@@ -3,7 +3,9 @@ import { emptyRawState } from './types';
 
 /**
  * Tastiera: WASD / frecce per muoversi, Maiusc scatto, Spazio salto,
- * J calcio (tieni premuto per caricare), Q o Tab cambio giocatore.
+ * J tiro (tieni premuto per caricare) / scivolata in difesa,
+ * K passaggio rasoterra / contrasto in piedi, L filtrante alto,
+ * Q o Tab cambio giocatore.
  */
 export class KeyboardSource implements InputSource {
   private keys = new Set<string>();
@@ -28,7 +30,9 @@ export class KeyboardSource implements InputSource {
     s.moveY = (this.down('KeyW', 'ArrowUp') ? 1 : 0) - (this.down('KeyS', 'ArrowDown') ? 1 : 0);
     s.sprint = this.down('ShiftLeft', 'ShiftRight');
     s.jump = this.down('Space');
-    s.kick = this.down('KeyJ', 'KeyK');
+    s.kick = this.down('KeyJ');
+    s.pass = this.down('KeyK');
+    s.lob = this.down('KeyL');
     s.switchPlayer = this.down('KeyQ', 'Tab');
     return s;
   }

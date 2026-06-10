@@ -1,5 +1,11 @@
 import type { Match } from '../match/Match';
 
+function formatClock(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const m = Math.floor(s / 60);
+  return `${m}:${String(s % 60).padStart(2, '0')}`;
+}
+
 /**
  * HUD diegetico in stile olografico (milestone 1: punteggio, stamina,
  * messaggi evento, schema comandi, contatore FPS; barra Flux, radar e
@@ -8,6 +14,7 @@ import type { Match } from '../match/Match';
 export class Hud {
   private root: HTMLDivElement;
   private scoreEl: HTMLDivElement;
+  private clockEl: HTMLDivElement;
   private staminaFill: HTMLDivElement;
   private messageEl: HTMLDivElement;
   private fpsEl: HTMLDivElement;
@@ -36,6 +43,15 @@ export class Hud {
       'box-shadow:0 0 18px rgba(60,200,255,.3), inset 0 0 14px rgba(60,200,255,.1);' +
       'text-shadow:0 0 10px rgba(110,230,255,.8);';
     this.root.appendChild(this.scoreEl);
+
+    // cronometro sotto il punteggio
+    this.clockEl = document.createElement('div');
+    this.clockEl.style.cssText =
+      'position:absolute;top:62px;left:50%;transform:translateX(-50%);' +
+      'padding:2px 14px;font-size:14px;font-weight:600;letter-spacing:2px;' +
+      'background:rgba(6,20,34,.7);border:1px solid rgba(80,220,255,.35);border-radius:4px;' +
+      'text-shadow:0 0 8px rgba(110,230,255,.7);';
+    this.root.appendChild(this.clockEl);
 
     // barra stamina in basso a sinistra
     const staminaBox = document.createElement('div');
@@ -76,8 +92,9 @@ export class Hud {
     // schema comandi in basso a destra
     this.helpEl = document.createElement('div');
     this.helpEl.innerHTML =
-      '<b>WASD</b> muovi &nbsp;·&nbsp; <b>MAIUSC</b> scatto &nbsp;·&nbsp; <b>SPAZIO</b> salto/doppio salto' +
-      ' &nbsp;·&nbsp; <b>J</b> tiro (tieni premuto) &nbsp;·&nbsp; <b>Q</b> cambio &nbsp;·&nbsp; <b>H</b> nascondi';
+      '<b>WASD</b> muovi · <b>MAIUSC</b> scatto · <b>SPAZIO</b> salto ·' +
+      ' <b>J</b> tiro / scivolata · <b>K</b> passaggio / contrasto ·' +
+      ' <b>L</b> filtrante · <b>Q</b> cambio · <b>H</b> nascondi';
     this.helpEl.style.cssText =
       'position:absolute;right:18px;bottom:20px;font-size:12px;opacity:.75;letter-spacing:.5px;' +
       'padding:6px 12px;background:rgba(6,20,34,.6);border:1px solid rgba(80,220,255,.3);border-radius:5px;';
@@ -128,6 +145,10 @@ export class Hud {
       `<span style="color:#7fe8ff">${match.teams[0].name}</span>` +
       ` &nbsp;${a} — ${b}&nbsp; ` +
       `<span style="color:#ffba7a">${match.teams[1].name}</span>`;
+  }
+
+  setClock(half: number, seconds: number): void {
+    this.clockEl.textContent = `${half}ᵀ  ${formatClock(seconds)}`;
   }
 
   setStamina(ratio: number): void {
