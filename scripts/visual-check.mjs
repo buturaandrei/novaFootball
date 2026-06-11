@@ -9,7 +9,7 @@ await page.click('[data-team="ruggito"]');
 await page.waitForTimeout(400);
 await page.screenshot({ path: '/tmp/m6-menu2.png' });
 await page.click('[data-team="ombra"]');
-await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+await page.waitForFunction(() => !!window.__nova, undefined, { timeout: 20000 });
 await page.waitForTimeout(2500);
 // inquadra la tribuna per vedere il pubblico + esultanza
 await page.evaluate(() => {

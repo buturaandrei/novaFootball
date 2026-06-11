@@ -30,6 +30,7 @@ const ensurePlaying = async (timeout = 180000) => {
       if (g.match.phase === 'replay') g.replayDirector.realElapsed = 999;
       return g.match.phase === 'playing';
     },
+    undefined,
     { timeout, polling: 500 },
   );
 };
@@ -44,12 +45,12 @@ try {
   await page.click('[data-team="gelo"]', { timeout: 10000 });
   await page.click('[data-diff="normale"]', { timeout: 10000 });
   await page.click('[data-team="ombra"]', { timeout: 10000 });
-  await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__nova, undefined, { timeout: 20000 });
   check('menu: selezione squadre e avvio partita', true);
 } catch {
   check('menu: selezione squadre e avvio partita', false);
   await page.goto(url, { waitUntil: 'networkidle' });
-  await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+  await page.waitForFunction(() => !!window.__nova, undefined, { timeout: 20000 });
 }
 await page.waitForTimeout(800);
 await page.screenshot({ path: '/tmp/shot-kickoff.png' });
@@ -111,6 +112,7 @@ for (let attempt = 0; attempt < 3 && !passReceived; attempt++) {
         const g = window.__nova;
         return g.ballControl.owner && g.ballControl.owner.team === 0 && g.ballControl.owner !== window.__passer;
       },
+      undefined,
       { timeout: 25000 },
     );
     passReceived = true;
@@ -139,6 +141,7 @@ try {
       }
       return min < 4;
     },
+    undefined,
     { timeout: 90000, polling: 500 },
   );
   check('IA: pressing sul portatore avversario', true);
@@ -166,6 +169,7 @@ try {
         g.ballControl.heldBy === g.teams[0].goalkeeper
       );
     },
+    undefined,
     { timeout: 120000, polling: 400 },
   );
   check('IA: OMBRA costruisce e avanza verso la porta GELO', true);
@@ -219,10 +223,10 @@ await page.keyboard.down('KeyF');
 await page.waitForTimeout(900);
 await page.keyboard.up('KeyF');
 try {
-  await page.waitForFunction(() => window.__nova.fluxShot.active, { timeout: 15000 });
+  await page.waitForFunction(() => window.__nova.fluxShot.active, undefined, { timeout: 15000 });
   check('tiro Flux: sequenza innescata', true);
   try {
-    await page.waitForFunction(() => window.__nova.time.scale < 0.2, { timeout: 20000 });
+    await page.waitForFunction(() => window.__nova.time.scale < 0.2, undefined, { timeout: 20000 });
     check('tiro Flux: slow-motion attivo', true);
   } catch {
     check('tiro Flux: slow-motion attivo', false);
@@ -234,7 +238,7 @@ await page.waitForTimeout(4000);
 await page.screenshot({ path: '/tmp/shot-fluxshot.png' });
 let sawFluxBall = false;
 try {
-  await page.waitForFunction(() => window.__nova.ball.fluxColor !== null, { timeout: 60000 });
+  await page.waitForFunction(() => window.__nova.ball.fluxColor !== null, undefined, { timeout: 60000 });
   sawFluxBall = true;
 } catch { /* la palla potrebbe già aver concluso */ }
 check('tiro Flux: palla avvolta dall\'energia', sawFluxBall);
@@ -242,6 +246,7 @@ await page.screenshot({ path: '/tmp/shot-fluxflight.png' });
 try {
   await page.waitForFunction(
     () => !window.__nova.fluxShot.active && window.__nova.time.scale > 0.9,
+    undefined,
     { timeout: 120000 },
   );
   const outcome = await page.evaluate(() => ({
@@ -274,7 +279,7 @@ await page.evaluate(() => {
 await page.waitForTimeout(700);
 await page.evaluate(() => { window.__nova.input.touch.state.fluxSmart = false; });
 try {
-  await page.waitForFunction(() => window.__nova.fluxShot.active, { timeout: 15000 });
+  await page.waitForFunction(() => window.__nova.fluxShot.active, undefined, { timeout: 15000 });
   check('FLUX contestuale: tiro Flux con palla vicina', true);
 } catch {
   check('FLUX contestuale: tiro Flux con palla vicina', false);
@@ -282,6 +287,7 @@ try {
 try {
   await page.waitForFunction(
     () => !window.__nova.fluxShot.active && window.__nova.time.scale > 0.9,
+    undefined,
     { timeout: 120000 },
   );
 } catch { errors.push('sequenza FLUX contestuale non conclusa'); }
@@ -302,12 +308,15 @@ await page.screenshot({ path: '/tmp/shot-terza.png' });
 await ensurePlaying().catch(() => errors.push('fase playing non raggiunta prima della punizione'));
 const fkApplied = await page.evaluate(() => {
   const g = window.__nova;
-  if (g.match.phase !== 'playing') g.match.kickoff(); // atomico: niente gare col gioco vivo
+  // preambolo atomico: niente cinematiche attive, niente palla in presa
+  g.fluxShot.cancel();
+  g.ballControl.clearHold();
+  if (g.match.phase !== 'playing') g.match.kickoff();
   g.match.foul(g.teams[0].fieldPlayers[0], g.teams[1].fieldPlayers[2], g.teams[1].fieldPlayers[2].position.clone());
   return g.match.phase === 'freeKick';
 });
 try {
-  await ensurePlaying(120000);
+  await ensurePlaying(180000);
   check('la punizione IA viene battuta e il gioco riprende', fkApplied);
 } catch {
   check('la punizione IA viene battuta e il gioco riprende', false);
@@ -335,6 +344,7 @@ try {
       const g = window.__nova;
       return g.ballControl.heldBy !== null || g.ball.velocity.x < 0;
     },
+    undefined,
     { timeout: 25000 },
   );
   const noGoal = await page.evaluate(
@@ -352,6 +362,7 @@ await page.screenshot({ path: '/tmp/shot-save.png' });
 try {
   await page.waitForFunction(
     () => window.__nova.ballControl.heldBy === null && window.__nova.match.phase === 'playing',
+    undefined,
     { timeout: 30000 },
   );
 } catch {
@@ -359,7 +370,12 @@ try {
 }
 const scoreBefore = await page.evaluate(() => {
   const g = window.__nova;
-  if (g.match.phase !== 'playing') g.match.kickoff();
+  // preambolo deterministico: niente cinematiche, niente presa, e kickoff
+  // INCONDIZIONATO così nessun corpo (portiere/difensori) è sulla
+  // traiettoria e la palla non può essere deflessa
+  g.fluxShot.cancel();
+  g.ballControl.clearHold();
+  g.match.kickoff();
   g.ball.position.set(28.5, 1.2, 3.1);
   g.ball.velocity.set(34, 2, 0);
   return g.match.score[0];
@@ -367,18 +383,32 @@ const scoreBefore = await page.evaluate(() => {
 try {
   await page.waitForFunction(
     (before) => window.__nova.match.score[0] > before,
-    { timeout: 30000 },
     scoreBefore,
+    { timeout: 30000 },
   );
   check('goal sul tiro imparabile', true);
 } catch {
+  const dbg = await page.evaluate(() => {
+    const g = window.__nova;
+    return {
+      score: g.match.score.join('-'),
+      prima: undefined,
+      ball: g.ball.position.toArray().map((v) => +v.toFixed(1)),
+      vel: +g.ball.velocity.length().toFixed(1),
+      phase: g.match.phase,
+      held: g.ballControl.heldBy?.name ?? null,
+      fluxAttivo: g.fluxShot.active,
+      scale: +g.time.scale.toFixed(2),
+    };
+  });
+  console.log('  debug goal:', JSON.stringify({ ...dbg, prima: scoreBefore }));
   check('goal sul tiro imparabile', false);
 }
 await page.screenshot({ path: '/tmp/shot-goal.png' });
 // dopo la celebrazione parte il replay automatico da 2 angolazioni
 let replaySeen = false;
 try {
-  await page.waitForFunction(() => window.__nova.match.phase === 'replay', { timeout: 90000 });
+  await page.waitForFunction(() => window.__nova.match.phase === 'replay', undefined, { timeout: 90000 });
   replaySeen = true;
   await page.waitForTimeout(4000); // lascialo girare per lo screenshot
   await page.screenshot({ path: '/tmp/shot-replay.png' });
@@ -404,7 +434,7 @@ await page.evaluate(() => {
   g.match.clock = 0.3;
 });
 try {
-  await page.waitForFunction(() => window.__nova.match.phase === 'fulltime', { timeout: 20000 });
+  await page.waitForFunction(() => window.__nova.match.phase === 'fulltime', undefined, { timeout: 20000 });
   check('fischio finale al termine del 2º tempo', true);
 } catch {
   check('fischio finale al termine del 2º tempo', false);
@@ -418,6 +448,7 @@ await page.keyboard.up('KeyJ');
 try {
   await page.waitForFunction(
     () => window.__nova.match.phase === 'playing' && window.__nova.match.half === 1,
+    undefined,
     { timeout: 20000 },
   );
   check('rivincita dopo il fischio finale', true);

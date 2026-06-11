@@ -389,7 +389,7 @@ export class TeamAI {
     if (this.fluxHooks) {
       const star = this.team.fieldPlayers[this.team.fieldPlayers.length - 1];
       const tendency = diff.fluxTendency * (owner === star ? 1.6 : 1);
-      const savingForShot = this.fluxHooks.barRatio() > 0.55;
+      const savingForShot = this.fluxHooks.barRatio() > 0.62;
       // tiro Flux a barra piena, a distanza utile dalla porta
       if (distGoal < 26 && Math.random() < tendency * 0.9) {
         if (this.fluxHooks.tryFluxShot(owner)) return;
@@ -500,7 +500,7 @@ export class TeamAI {
       // (mai mentre si risparmia per il tiro)
       if (
         this.fluxHooks &&
-        this.fluxHooks.barRatio() <= 0.55 &&
+        this.fluxHooks.barRatio() <= 0.62 &&
         d > 6 && d < 16 &&
         carrier.sprinting &&
         Math.random() < diff.fluxTendency * 0.4

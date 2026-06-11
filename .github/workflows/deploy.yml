@@ -3,7 +3,6 @@ name: Deploy su GitHub Pages
 on:
   push:
     branches:
-      - claude/galactik-football-game-hs0an3
       - main
   workflow_dispatch:
 

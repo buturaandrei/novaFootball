@@ -13,7 +13,7 @@ const page = await browser.newPage({ viewport: { width: 256, height: 144 } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', String(e)));
 
 await page.goto(`http://localhost:4517/?demo=1&difficolta=${diff}`, { waitUntil: 'networkidle' });
-await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+await page.waitForFunction(() => !!window.__nova, undefined, { timeout: 20000 });
 console.log(`partita demo avviata (difficoltà ${diff})...`);
 
 const t0 = Date.now();

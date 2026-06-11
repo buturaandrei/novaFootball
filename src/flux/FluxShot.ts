@@ -209,6 +209,11 @@ export class FluxShot {
     if (this.phase === 'volo') this.goalHappened = true;
   }
 
+  /** Annulla la sequenza in corso (reset di fase, test, casi limite). */
+  cancel(): void {
+    if (this.active) this.abort();
+  }
+
   // ------------------------------------------------------------- interni
   private launch(): void {
     const d = this.deps;
