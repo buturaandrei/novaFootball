@@ -81,8 +81,12 @@ export class Goalkeeper {
 
     this.state = 'posizione';
 
+    // i tiri Flux non si fermano con la parata normale: la gestisce la
+    // sequenza cinematica (parata Flux)
+    const fluxIncoming = this.ball.fluxColor !== null;
+
     // tiro in arrivo? calcola l'intercetto ed eventualmente tuffati
-    if (this.diveCooldown <= 0 && this.detectShotAndDive()) {
+    if (!fluxIncoming && this.diveCooldown <= 0 && this.detectShotAndDive()) {
       gk.update(dt, null);
       return;
     }
@@ -196,6 +200,7 @@ export class Goalkeeper {
     const gk = this.player;
     const ball = this.ball;
     if (this.ballControl.heldBy) return;
+    if (ball.fluxColor !== null) return; // solo la parata Flux ferma un tiro Flux
 
     const hands = this.tmpA.copy(gk.position);
     hands.y += gk.action === 'tuffo' ? 1.0 : 1.1;

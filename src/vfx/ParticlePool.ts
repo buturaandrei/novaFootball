@@ -22,6 +22,8 @@ export interface BurstOptions {
   size?: number;
   gravity?: number;
   drag?: number;
+  /** Implosione: nasce su una sfera di questo raggio e converge al centro. */
+  implodeRadius?: number;
 }
 
 /**
@@ -106,7 +108,11 @@ export class ParticlePool {
       const phi = Math.random() * Math.PI * 2;
       const s = Math.sqrt(1 - u * u);
       p.vel.set(s * Math.cos(phi), s * Math.sin(phi), u);
-      if (dir) {
+      if (opts.implodeRadius) {
+        // parte sulla sfera e converge verso l'origine
+        p.pos.addScaledVector(p.vel, opts.implodeRadius * (0.7 + Math.random() * 0.5));
+        p.vel.negate();
+      } else if (dir) {
         p.vel.multiplyScalar(spread).add(dir).normalize();
       }
       p.vel.multiplyScalar(speed * (0.4 + Math.random() * 0.6));

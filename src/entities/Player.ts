@@ -63,6 +63,8 @@ export class Player {
   /** Boost di velocità temporaneo (scatto Flux). */
   boostFactor = 1;
   boostTimer = 0;
+  /** Coreografia Flux sovrapposta al movimento (piroetta, spallata, carica). */
+  fluxAnim: { kind: 'spin' | 'charge' | 'windup' | 'strike'; t: number; dur: number } | null = null;
   readonly team: number; // 0 = attacca +x, 1 = attacca -x (vedi Match)
   readonly role: PlayerRole;
   readonly name: string;
@@ -91,6 +93,11 @@ export class Player {
   applyBoost(factor: number, duration: number): void {
     this.boostFactor = factor;
     this.boostTimer = duration;
+  }
+
+  /** Avvia una coreografia Flux (non blocca il movimento). */
+  playFluxAnim(kind: 'spin' | 'charge' | 'windup' | 'strike', dur: number): void {
+    this.fluxAnim = { kind, t: 0, dur };
   }
 
   /** true se il giocatore può ricevere comandi di movimento. */
@@ -196,7 +203,29 @@ export class Player {
 
     // --- sincronizza il rig ---
     this.syncRig();
-    this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge);
+    if (this.fluxAnim) {
+      const fa = this.fluxAnim;
+      fa.t += dt;
+      const t01 = fa.t / fa.dur;
+      if (t01 >= 1 && fa.kind !== 'windup') {
+        this.fluxAnim = null;
+        this.rig.recoverPose(dt);
+      } else {
+        switch (fa.kind) {
+          case 'spin': this.rig.fluxSpinPose(Math.min(1, t01)); break;
+          case 'charge': this.rig.fluxChargePose(t01); break;
+          case 'windup': this.rig.fluxWindupPose(Math.min(1, t01), dt); break;
+          case 'strike': this.rig.fluxStrikePose(); break;
+        }
+      }
+    } else {
+      this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge);
+    }
+  }
+
+  /** Chiude la coreografia Flux in corso (es. fine del windup). */
+  clearFluxAnim(): void {
+    this.fluxAnim = null;
   }
 
   /** Gestione delle azioni speciali che sospendono il controllo. */

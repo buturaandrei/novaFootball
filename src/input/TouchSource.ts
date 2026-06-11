@@ -16,6 +16,7 @@ export class TouchSource implements InputSource {
   private stickOrigin = { x: 0, y: 0 };
   private readonly stickRadius = 60;
   private visible = false;
+  private fluxShotBtn!: HTMLDivElement;
 
   constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
@@ -95,6 +96,10 @@ export class TouchSource implements InputSource {
     this.makeButton('⚡DRIBLO', 'right:158px;bottom:82px;width:54px;height:54px;', (down) => {
       this.state.fluxDribble = down;
     }, true);
+    this.fluxShotBtn = this.makeButton('⚡TIRO', 'right:96px;bottom:162px;width:60px;height:60px;', (down) => {
+      this.state.fluxShot = down;
+    }, true);
+    this.fluxShotBtn.style.opacity = '0.25';
     this.makeButton('CAMBIO', 'right:14px;top:64px;width:46px;height:46px;', (down) => {
       this.state.switchPlayer = down;
     });
@@ -132,7 +137,16 @@ export class TouchSource implements InputSource {
     this.state.sprint = len >= this.stickRadius * 0.95;
   }
 
-  private makeButton(label: string, pos: string, onChange: (down: boolean) => void, flux = false): void {
+  /** Il pulsante ⚡TIRO si accende solo quando la barra Flux è piena. */
+  setFluxShotReady(ready: boolean): void {
+    if (!this.fluxShotBtn) return;
+    this.fluxShotBtn.style.opacity = ready ? '1' : '0.25';
+    this.fluxShotBtn.style.boxShadow = ready
+      ? '0 0 22px rgba(190,140,255,.9), inset 0 0 18px rgba(190,140,255,.4)'
+      : '0 0 14px rgba(170,110,255,.35), inset 0 0 16px rgba(60,200,255,.12)';
+  }
+
+  private makeButton(label: string, pos: string, onChange: (down: boolean) => void, flux = false): HTMLDivElement {
     const btn = document.createElement('div');
     btn.textContent = label;
     const border = flux ? 'rgba(190,160,255,.65)' : 'rgba(80,220,255,.55)';
@@ -163,6 +177,7 @@ export class TouchSource implements InputSource {
     btn.addEventListener('pointerup', () => set(false));
     btn.addEventListener('pointercancel', () => set(false));
     this.root.appendChild(btn);
+    return btn;
   }
 
   poll(): RawInputState {

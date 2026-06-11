@@ -44,6 +44,11 @@ export class Ball {
   private core: THREE.Mesh;
   private shell: THREE.LineSegments;
   private glowMat: THREE.MeshStandardMaterial;
+  private fluxShell: THREE.Mesh;
+  private fluxShellMat: THREE.MeshBasicMaterial;
+  private light: THREE.PointLight;
+  /** Colore dell'energia Flux che avvolge la palla (null = tiro normale). */
+  fluxColor: number | null = null;
 
   constructor() {
     this.mesh = new THREE.Group();
@@ -66,8 +71,48 @@ export class Ball {
     );
     this.mesh.add(this.shell);
 
-    const light = new THREE.PointLight(0x66ccff, 2.2, 7, 2);
-    this.mesh.add(light);
+    this.light = new THREE.PointLight(0x66ccff, 2.2, 7, 2);
+    this.mesh.add(this.light);
+
+    // guscio di energia Flux (visibile solo durante il tiro Flux)
+    this.fluxShellMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.fluxShell = new THREE.Mesh(new THREE.IcosahedronGeometry(BALL_RADIUS * 1.8, 1), this.fluxShellMat);
+    this.fluxShell.visible = false;
+    this.mesh.add(this.fluxShell);
+  }
+
+  /** Avvolge (o spegne) la palla nell'energia Flux. */
+  setFlux(color: number | null): void {
+    this.fluxColor = color;
+    if (color === null) {
+      this.fluxShell.visible = false;
+      this.fluxShellMat.opacity = 0;
+      this.light.color.setHex(0x66ccff);
+      this.light.intensity = 2.2;
+      this.core.visible = true;
+      this.shell.visible = true;
+    } else {
+      this.fluxShell.visible = true;
+      this.fluxShellMat.color.setHex(color);
+      this.fluxShellMat.opacity = 0.55;
+      this.light.color.setHex(color);
+      this.light.intensity = 9;
+      this.light.distance = 14;
+    }
+  }
+
+  /** Trasparenza extra del nucleo (tiro OMBRA quasi invisibile a metà volo). */
+  setVisibility(v: number): void {
+    this.core.visible = v > 0.4;
+    this.shell.visible = v > 0.25;
+    this.fluxShellMat.opacity = 0.55 * v;
+    this.light.intensity = 9 * Math.max(0.2, v);
   }
 
   reset(x = 0, z = 0): void {

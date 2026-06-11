@@ -201,4 +201,58 @@ export class PlayerRig {
       g.rotation.z = THREE.MathUtils.damp(g.rotation.z, 0, 10, dt);
     }
   }
+
+  // ------------------------------------------------- coreografie Flux
+  /** Piroetta del Passo di Brina (GELO): giro completo, braccia aperte. */
+  fluxSpinPose(t01: number): void {
+    this.body.rotation.y = t01 * Math.PI * 2;
+    this.body.rotation.x = -0.15;
+    this.body.position.y = Math.sin(t01 * Math.PI) * 0.18;
+    this.armL.rotation.z = 1.6;
+    this.armR.rotation.z = -1.6;
+    this.armL.rotation.x = 0;
+    this.armR.rotation.x = 0;
+    this.legL.rotation.x = -0.25;
+    this.legR.rotation.x = 0.5;
+  }
+
+  /** Spallata della Zampata (RUGGITO): corpo rollato sulla spalla. */
+  fluxChargePose(t01: number): void {
+    const k = Math.sin(Math.min(1, t01) * Math.PI);
+    this.body.rotation.z = -0.55 * k;
+    this.body.rotation.x = 0.45 * k;
+    this.armR.rotation.x = -1.4 * k;
+    this.armR.rotation.z = -0.5 * k;
+    this.armL.rotation.x = 1.0 * k;
+    this.legL.rotation.x = -0.6 * k;
+    this.legR.rotation.x = 0.8 * k;
+  }
+
+  /** Raccolta dell'energia prima del tiro Flux: corpo raccolto, braccia che convergono. */
+  fluxWindupPose(t01: number, dt: number): void {
+    const k = Math.min(1, t01);
+    this.body.rotation.x = THREE.MathUtils.damp(this.body.rotation.x, 0.25 * k, 10, dt);
+    this.body.position.y = THREE.MathUtils.damp(this.body.position.y, -0.22 * k, 10, dt);
+    this.armL.rotation.x = -2.4 * k;
+    this.armR.rotation.x = -2.4 * k;
+    this.armL.rotation.z = 0.5 * k;
+    this.armR.rotation.z = -0.5 * k;
+    this.legL.rotation.x = 0.35 * k;
+    this.legR.rotation.x = -0.5 * k;
+    // tremito crescente dell'energia
+    this.body.rotation.z = Math.sin(t01 * 50) * 0.035 * k;
+  }
+
+  /** Posa del rilascio: corpo torto, gamba tesa nel calcio. */
+  fluxStrikePose(): void {
+    this.body.rotation.y = -0.7;
+    this.body.rotation.x = -0.25;
+    this.body.position.y = 0.05;
+    this.legR.rotation.x = 1.7;
+    this.legL.rotation.x = -0.5;
+    this.armL.rotation.x = -1.2;
+    this.armL.rotation.z = 0.9;
+    this.armR.rotation.x = 0.9;
+    this.armR.rotation.z = -0.6;
+  }
 }

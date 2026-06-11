@@ -52,6 +52,8 @@ export interface DirectorContext {
 export class CameraDirector {
   readonly camera: THREE.PerspectiveCamera;
   state = CameraState.OpenPlay;
+  /** Regia esterna (tiro Flux, replay): pilota direttamente la camera. */
+  private override: ((camera: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   private stateTime = 0;
   private goalFocus = new THREE.Vector3();
   private goalOrbitAngle = 0;
@@ -86,8 +88,30 @@ export class CameraDirector {
     return true;
   }
 
+  /** Prende il controllo diretto della camera per uno stato cinematico. */
+  takeOver(state: CameraState, fn: (camera: THREE.PerspectiveCamera, dt: number) => void): void {
+    this.request(state);
+    this.override = fn;
+  }
+
+  /** Rilascia la regia esterna; `cut` = rientro a taglio netto. */
+  releaseOverride(cut = true): void {
+    this.override = null;
+    this.state = CameraState.OpenPlay;
+    this.stateTime = 0;
+    if (cut) this.cutPending = true;
+    // riallinea lo stato interno alla posizione lasciata dalla cinematica
+    this.currentPos.copy(this.camera.position);
+    this.currentFov = this.camera.fov;
+  }
+
   update(dt: number, ctx: DirectorContext): void {
     this.stateTime += dt;
+
+    if (this.override) {
+      this.override(this.camera, dt);
+      return;
+    }
 
     let targetFov = 55;
     let posLambda = 3.2;

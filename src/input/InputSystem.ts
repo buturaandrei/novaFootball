@@ -18,6 +18,7 @@ export class InputSystem {
   private prevSwitch = false;
   private prevFluxSprint = false;
   private prevFluxDribble = false;
+  private prevFluxShot = false;
 
   readonly frame: InputFrame = {
     moveX: 0,
@@ -32,6 +33,7 @@ export class InputSystem {
     switchPressed: false,
     fluxSprintPressed: false,
     fluxDribblePressed: false,
+    fluxShotPressed: false,
   };
 
   constructor(uiParent: HTMLElement) {
@@ -50,6 +52,7 @@ export class InputSystem {
     let sw = false;
     let fxS = false;
     let fxD = false;
+    let fxT = false;
 
     for (const src of this.sources) {
       const s = src.poll();
@@ -63,6 +66,7 @@ export class InputSystem {
       sw = sw || s.switchPlayer;
       fxS = fxS || s.fluxSprint;
       fxD = fxD || s.fluxDribble;
+      fxT = fxT || s.fluxShot;
     }
 
     const len = Math.hypot(moveX, moveY);
@@ -84,6 +88,7 @@ export class InputSystem {
     f.switchPressed = sw && !this.prevSwitch;
     f.fluxSprintPressed = fxS && !this.prevFluxSprint;
     f.fluxDribblePressed = fxD && !this.prevFluxDribble;
+    f.fluxShotPressed = fxT && !this.prevFluxShot;
 
     this.prevJump = jump;
     this.prevKick = kick;
@@ -92,6 +97,7 @@ export class InputSystem {
     this.prevSwitch = sw;
     this.prevFluxSprint = fxS;
     this.prevFluxDribble = fxD;
+    this.prevFluxShot = fxT;
     return f;
   }
 }

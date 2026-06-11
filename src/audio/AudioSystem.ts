@@ -285,6 +285,84 @@ export class AudioSystem {
     }
   }
 
+  /** Rombo crescente della carica del tiro Flux (durata in secondi). */
+  fluxRumble(duration: number): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer(duration + 0.2);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(120, t);
+    lp.frequency.exponentialRampToValueAtTime(700, t + duration);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.4, t + duration);
+    g.gain.exponentialRampToValueAtTime(0.001, t + duration + 0.15);
+    noise.connect(lp).connect(g).connect(this.master);
+    noise.start(t);
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(32, t);
+    sub.frequency.linearRampToValueAtTime(55, t + duration);
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0.0001, t);
+    sg.gain.exponentialRampToValueAtTime(0.3, t + duration);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + duration + 0.15);
+    sub.connect(sg).connect(this.master);
+    sub.start(t);
+    sub.stop(t + duration + 0.2);
+  }
+
+  /** Esplosione del rilascio/impatto del tiro Flux. */
+  fluxBlast(big: boolean): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const noise = ctx.createBufferSource();
+    noise.buffer = this.noiseBuffer(big ? 1.0 : 0.45);
+    const lp = ctx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.setValueAtTime(big ? 2500 : 1800, t);
+    lp.frequency.exponentialRampToValueAtTime(120, t + (big ? 0.9 : 0.4));
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(big ? 0.65 : 0.45, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + (big ? 1.0 : 0.45));
+    noise.connect(lp).connect(g).connect(this.master);
+    noise.start(t);
+    const sub = ctx.createOscillator();
+    sub.type = 'sine';
+    sub.frequency.setValueAtTime(70, t);
+    sub.frequency.exponentialRampToValueAtTime(28, t + 0.5);
+    const sg = ctx.createGain();
+    sg.gain.setValueAtTime(0.5, t);
+    sg.gain.exponentialRampToValueAtTime(0.001, t + 0.55);
+    sub.connect(sg).connect(this.master);
+    sub.start(t);
+    sub.stop(t + 0.6);
+  }
+
+  /** Clash energetico della parata Flux. */
+  fluxClash(): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    for (const f of [880, 1320, 660]) {
+      const osc = ctx.createOscillator();
+      osc.type = 'square';
+      osc.frequency.setValueAtTime(f, t);
+      osc.frequency.exponentialRampToValueAtTime(f * 0.4, t + 0.3);
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.1, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.35);
+      osc.connect(g).connect(this.master);
+      osc.start(t);
+      osc.stop(t + 0.4);
+    }
+    this.fluxBlast(false);
+  }
+
   /** Blip negativo: azione Flux non disponibile. */
   denied(): void {
     if (!this.ctx || !this.master) return;

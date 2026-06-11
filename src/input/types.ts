@@ -12,6 +12,7 @@ export interface RawInputState {
   switchPlayer: boolean;
   fluxSprint: boolean;
   fluxDribble: boolean;
+  fluxShot: boolean;
 }
 
 export function emptyRawState(): RawInputState {
@@ -26,6 +27,7 @@ export function emptyRawState(): RawInputState {
     switchPlayer: false,
     fluxSprint: false,
     fluxDribble: false,
+    fluxShot: false,
   };
 }
 
@@ -43,6 +45,7 @@ export interface InputFrame {
   switchPressed: boolean;
   fluxSprintPressed: boolean;
   fluxDribblePressed: boolean;
+  fluxShotPressed: boolean;
 }
 
 export interface InputSource {

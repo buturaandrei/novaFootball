@@ -34,6 +34,8 @@ export interface FluxHooks {
   trySprint: (p: Player) => boolean;
   /** Tenta il dribbling Flux: true se attivato. */
   tryDribble: (p: Player) => boolean;
+  /** Tenta il tiro Flux cinematico (richiede barra piena): true se partito. */
+  tryFluxShot: (p: Player) => boolean;
 }
 
 /** Cervello individuale: stato + bersaglio di movimento assegnati dal TeamAI. */
@@ -383,6 +385,10 @@ export class TeamAI {
     if (this.fluxHooks) {
       const star = this.team.fieldPlayers[this.team.fieldPlayers.length - 1];
       const tendency = diff.fluxTendency * (owner === star ? 1.6 : 1);
+      // tiro Flux a barra piena, a distanza utile dalla porta
+      if (distGoal < 26 && Math.random() < tendency * 0.9) {
+        if (this.fluxHooks.tryFluxShot(owner)) return;
+      }
       // dribbling Flux sotto pressione
       if (pressure < 3 && Math.random() < tendency) {
         if (this.fluxHooks.tryDribble(owner)) return;

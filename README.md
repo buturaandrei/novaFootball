@@ -40,6 +40,8 @@ node scripts/smoke-test.mjs
 | Filtrante alto | L | Y | pulsante LANCIO |
 | Scatto Flux | E | RT | pulsante ⚡SCATTO |
 | Dribbling Flux | R | LT | pulsante ⚡DRIBLO |
+| Tiro Flux (a barra piena, palla al piede) | F | R3 o LT+RT | pulsante ⚡TIRO |
+| Parata Flux (QTE durante il tiro avversario) | J | X | pulsante TIRO |
 | Cambio giocatore | Q / Tab | LB | pulsante CAMBIO |
 | Difficoltà (facile/normale/difficile) | 1 / 2 / 3 | — | — |
 | Mostra/nascondi aiuto | H | — | — |
@@ -108,5 +110,22 @@ Avversario alternativo (in attesa del menu della milestone 6):
      recupero — frequenza legata alla difficoltà
    - HUD: barra Flux col nome dell'energia + mini-barra avversaria;
      scie after-image e FOV allargato negli scatti Flux
-5. ⬜ Tiro Flux con sequenza cinematica completa, parata Flux, replay dei goal
+5. ✅ **Tiro Flux con sequenza cinematica completa, parata Flux, replay dei goal**
+   - Sequenza del §6 frame-by-frame: tempo a 0.08x con letterbox (gli altri
+     continuano in slow-motion), camera che orbita il tiratore avvicinandosi
+     con FOV che si stringe, aura convergente, terreno reattivo (cerchio
+     d'energia crescente), banner inclinato col nome della mossa, rombo
+     crescente; flash + frame-freeze sul momento dell'impatto piede-palla;
+     volo a 0.5x con scia volumetrica e difensori spazzati via
+   - Ogni energia ha la SUA coreografia: ZERO ASSOLUTO (orbita bassa, tiro
+     teso che congela una scia), ECLISSE (orbita alta opposta, palla quasi
+     invisibile a metà traiettoria), METEORA RUGGENTE (orbita larga con
+     tremore, parabola devastante con onda d'urto)
+   - Parata Flux: il portiere spende Flux per l'unico modo di fermare un
+     tiro Flux — QTE di timing per l'umano, probabilità per difficoltà
+     per l'IA; clash di energie con knockback e slow-mo
+   - Replay automatico di ogni goal da 2 angolazioni (dietro la porta +
+     laterale bassa) con slow-motion extra sull'impatto
+   - Coreografie corporee distinte per le mosse Flux: piroetta (GELO),
+     spallata (RUGGITO), sparizione vera (OMBRA), windup e strike del tiro
 6. ⬜ Arena completa, pubblico, audio finale, HUD/menu, polish e bilanciamento

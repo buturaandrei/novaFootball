@@ -25,6 +25,8 @@ import type { FluxProfile } from './FluxProfile';
 export class FluxMoves {
   private trailTimers = new Map<Player, number>();
   private trailColor = new Map<Player, number>();
+  /** Giocatori momentaneamente invisibili (teletrasporto OMBRA). */
+  private vanished = new Map<Player, number>();
 
   // scratch
   private tmpA = new THREE.Vector3();
@@ -60,7 +62,10 @@ export class FluxMoves {
 
     switch (profile.id) {
       case 'ombra': {
-        // teletrasporto corto: sparisce e riappare oltre il difensore
+        // teletrasporto corto: il corpo SPARISCE davvero e riappare oltre
+        // il difensore (sagome d'ombra lungo il tragitto)
+        this.vanished.set(player, 0.16);
+        player.object3d.visible = false;
         const from = player.position.clone();
         this.particles.burst(from.clone().setY(1), {
           count: 36, color: profile.color, speed: 4, life: 0.5, size: 1.4, gravity: 0.5,
@@ -88,8 +93,9 @@ export class FluxMoves {
         break;
       }
       case 'ruggito': {
-        // zampata: accelerazione ferina + onda d'urto che sbilancia
+        // zampata: spallata ferina + onda d'urto che sbilancia
         player.applyBoost(1.5, 0.9);
+        player.playFluxAnim('charge', 0.6);
         player.velocity.addScaledVector(fwd, 9);
         this.trailColor.set(player, profile.color);
         let nearest: Player | null = null;
@@ -116,8 +122,9 @@ export class FluxMoves {
       }
       case 'gelo':
       default: {
-        // passo di brina: guizzo fulmineo con after-image, palla incollata
+        // passo di brina: PIROETTA fulminea con after-image, palla incollata
         player.applyBoost(1.35, 0.55);
+        player.playFluxAnim('spin', 0.45);
         player.velocity.copy(fwd).multiplyScalar(19);
         this.trailColor.set(player, profile.color);
         for (let i = 0; i < 4; i++) {
@@ -142,6 +149,16 @@ export class FluxMoves {
 
   /** Scie per i giocatori con boost attivo (sagome + particelle). */
   update(dt: number, players: Player[]): void {
+    // riapparizione dopo il teletrasporto
+    for (const [p, t] of this.vanished) {
+      const nt = t - dt;
+      if (nt <= 0) {
+        p.object3d.visible = true;
+        this.vanished.delete(p);
+      } else {
+        this.vanished.set(p, nt);
+      }
+    }
     for (const p of players) {
       if (p.boostTimer > 0) {
         const timer = (this.trailTimers.get(p) ?? 0) - dt;

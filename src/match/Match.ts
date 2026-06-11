@@ -7,6 +7,7 @@ import type { Team } from './Team';
 export type MatchPhase =
   | 'playing'
   | 'goalCelebration'
+  | 'replay'
   | 'freeKick'
   | 'halftime'
   | 'fulltime';
@@ -35,6 +36,8 @@ export class Match {
   /** Battitore della punizione corrente (anche per il kickoff del Game). */
   freeKickTaker: Player | null = null;
   freeKickTeam = -1;
+  /** Dopo la celebrazione del goal parte il replay (gestito dal Game). */
+  pendingReplay = false;
 
   private phaseTimer = 0;
   private kickoffTeam = 0;
@@ -125,6 +128,13 @@ export class Match {
     }
   }
 
+  /** Il replay del goal è terminato: si riparte dal centro. */
+  finishReplay(): void {
+    if (this.phase !== 'replay') return;
+    this.pendingReplay = false;
+    this.kickoff();
+  }
+
   /** La punizione è stata battuta: si torna a giocare. */
   freeKickTaken(): void {
     if (this.phase === 'freeKick' && this.freeKickTaker) {
@@ -135,6 +145,7 @@ export class Match {
   }
 
   kickoff(): void {
+    this.pendingReplay = false;
     this.ball.reset();
     this.teams[0].placeForKickoff(this.kickoffTeam === 0);
     this.teams[1].placeForKickoff(this.kickoffTeam === 1);
@@ -172,9 +183,17 @@ export class Match {
       }
       case 'goalCelebration': {
         this.phaseTimer -= dt;
-        if (this.phaseTimer <= 0) this.kickoff();
+        if (this.phaseTimer <= 0) {
+          if (this.pendingReplay) {
+            this.phase = 'replay'; // il Game guida il replay e chiama finishReplay()
+          } else {
+            this.kickoff();
+          }
+        }
         break;
       }
+      case 'replay':
+        break; // in attesa di finishReplay()
       case 'freeKick': {
         if (this.phaseTimer > 0) {
           this.phaseTimer -= dt;

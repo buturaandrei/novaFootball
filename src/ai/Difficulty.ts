@@ -22,8 +22,10 @@ export interface DifficultyParams {
   shootRange: number;
   /** Fattore sulla velocità massima richiesta dall'IA (0..1). */
   speedFactor: number;
-  /** Propensione a spendere Flux (scatto/dribbling, e tiro dalla M5). */
+  /** Propensione a spendere Flux (scatto/dribbling/tiro). */
   fluxTendency: number;
+  /** Probabilità che il portiere IA riesca nella parata Flux. */
+  gkFluxSave: number;
 }
 
 export type DifficultyName = 'facile' | 'normale' | 'difficile';
@@ -40,6 +42,7 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     shootRange: 13,
     speedFactor: 0.82,
     fluxTendency: 0.12,
+    gkFluxSave: 0.3,
   },
   normale: {
     label: 'NORMALE',
@@ -52,6 +55,7 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     shootRange: 16,
     speedFactor: 0.94,
     fluxTendency: 0.35,
+    gkFluxSave: 0.55,
   },
   difficile: {
     label: 'DIFFICILE',
@@ -64,5 +68,6 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     shootRange: 19,
     speedFactor: 1.0,
     fluxTendency: 0.65,
+    gkFluxSave: 0.78,
   },
 };

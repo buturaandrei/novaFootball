@@ -19,7 +19,11 @@ import { Team } from '../match/Team';
 import { Ball } from '../physics/Ball';
 import { FLUX_PROFILES } from '../flux/FluxProfile';
 import { FluxMoves } from '../flux/FluxMoves';
+import { FluxShot } from '../flux/FluxShot';
 import { FluxSystem } from '../flux/FluxSystem';
+import { Recorder } from '../replay/Recorder';
+import { ReplayDirector } from '../replay/ReplayDirector';
+import { Cinematics } from '../ui/Cinematics';
 import { AfterImages } from '../vfx/AfterImages';
 import { ChargeRing } from '../vfx/ChargeRing';
 import { ParticlePool } from '../vfx/ParticlePool';
@@ -27,6 +31,7 @@ import { Hud } from '../ui/Hud';
 import { Time } from './Time';
 import {
   FLUX_DRIBBLE_COST,
+  FLUX_SHOT_COST,
   FLUX_SPRINT_COST,
   HALF_LENGTH,
   PLAYER_RADIUS,
@@ -62,6 +67,12 @@ export class Game {
   difficulty: DifficultyName = 'normale';
   readonly fluxSystems: FluxSystem[];
   private fluxMoves: FluxMoves;
+  readonly fluxShot: FluxShot;
+  private cinematics: Cinematics;
+  private recorder: Recorder;
+  private replayDirector: ReplayDirector;
+  private replayRunning = false;
+  private goalSide = 1;
   private afterImages = new AfterImages(16);
   private lastPassReceiver: Player | null = null;
   private audio = new AudioSystem();
@@ -176,6 +187,35 @@ export class Game {
     this.match = new Match(this.ball, this.teams);
     this.fluxSystems = this.teams.map((t) => new FluxSystem(FLUX_PROFILES[t.config.flux]));
     this.fluxMoves = new FluxMoves(this.ball, this.ballControl, this.particles, this.afterImages, this.audio);
+    this.cinematics = new Cinematics(container);
+    this.recorder = new Recorder(this.players, this.ball);
+    this.replayDirector = new ReplayDirector(this.players, this.ball);
+    this.fluxShot = new FluxShot({
+      time: this.time,
+      director: this.director,
+      cinematics: this.cinematics,
+      particles: this.particles,
+      ball: this.ball,
+      ballControl: this.ballControl,
+      audio: this.audio,
+      teams: this.teams,
+      fluxSystems: this.fluxSystems,
+      aiSaveChance: () => DIFFICULTIES[this.difficulty].gkFluxSave,
+      onResult: (outcome, shooterTeam) => {
+        if (outcome === 'parata') {
+          const gk = this.teams[1 - shooterTeam].goalkeeper;
+          this.hud.showMessage(`PARATA FLUX DI ${gk.name.toUpperCase()}!`, 2.2);
+          this.audio.goalRoar();
+        }
+      },
+      onEnd: () => {
+        // se nel frattempo è arrivato il goal, la regia passa alla celebrazione
+        if (this.match.phase === 'goalCelebration') {
+          this.director.request(CameraState.Goal, { focus: this.ball.position.clone(), cut: true });
+        }
+      },
+    });
+    this.scene.add(this.fluxShot.ringMesh);
     this.goalkeepers = this.teams.map(
       (team) => new Goalkeeper(team.goalkeeper, team, this.ball, this.ballControl),
     );
@@ -194,6 +234,7 @@ export class Game {
         {
           trySprint: (p) => this.useFlux(1, 'sprint', p),
           tryDribble: (p) => this.useFlux(1, 'dribble', p),
+          tryFluxShot: (p) => this.startFluxShot(1, p, true),
         },
       ),
     ];
@@ -361,15 +402,32 @@ export class Game {
       this.audio.whistle();
       this.audio.goalRoar();
       this.director.request(CameraState.Goal, { focus: ballPos });
+      this.fluxShot.notifyGoal();
+      // replay automatico da 2 angolazioni dopo la celebrazione
+      this.goalSide = Math.sign(ballPos.x) || 1;
+      this.match.pendingReplay = this.recorder.getWindow(3.4) !== null;
+
+      const isFluxGoal = this.ball.fluxColor !== null;
       const color = scoringTeam >= 0 ? this.teams[scoringTeam].color : 0xffffff;
       this.particles.burst(ballPos.clone().setY(Math.max(1, ballPos.y)), {
-        count: 120,
+        count: isFluxGoal ? 200 : 120,
         color,
-        speed: 11,
-        life: 1.1,
-        size: 1.6,
+        speed: isFluxGoal ? 15 : 11,
+        life: 1.2,
+        size: 1.7,
         gravity: 7,
       });
+      if (isFluxGoal) {
+        // onda d'urto sulla rete energetica + boato extra
+        this.audio.fluxBlast(true);
+        const sign = Math.sign(ballPos.x);
+        for (let i = 0; i < 3; i++) {
+          this.arena.registerWallImpact(
+            new THREE.Vector3(ballPos.x, 1.5 + i, ballPos.z * 0.5),
+            'x', sign, 1.5,
+          );
+        }
+      }
     };
     this.match.events.onKickoff = () => {
       this.director.request(CameraState.OpenPlay, { cut: true });
@@ -404,7 +462,7 @@ export class Game {
 
   /** Tenta una mossa Flux per la squadra: spende energia ed esegue. */
   useFlux(teamIndex: number, kind: 'sprint' | 'dribble', player: Player): boolean {
-    if (this.match.phase !== 'playing' || player.action !== 'normale') return false;
+    if (this.match.phase !== 'playing' || player.action !== 'normale' || this.fluxShot.active) return false;
     const system = this.fluxSystems[teamIndex];
     const cost = kind === 'sprint' ? FLUX_SPRINT_COST : FLUX_DRIBBLE_COST;
     if (!system.spend(cost)) return false;
@@ -414,6 +472,34 @@ export class Game {
     } else {
       this.fluxMoves.dribble(player, system.profile, opponents);
     }
+    return true;
+  }
+
+  /**
+   * Innesca il tiro Flux cinematico: serve barra piena e palla al piede.
+   * `silent` per l'IA (nessun feedback negativo a schermo).
+   */
+  startFluxShot(teamIndex: number, shooter: Player, silent = false): boolean {
+    const system = this.fluxSystems[teamIndex];
+    const feedback = (msg: string) => {
+      if (!silent) {
+        this.audio.denied();
+        this.hud.showMessage(msg, 1.1);
+      }
+    };
+    if (this.fluxShot.active || this.match.phase !== 'playing' || shooter.action !== 'normale') {
+      return false;
+    }
+    if (!system.ready) {
+      feedback('FLUX NON PRONTO');
+      return false;
+    }
+    if (this.ballControl.owner !== shooter) {
+      feedback('SERVE LA PALLA AL PIEDE');
+      return false;
+    }
+    system.spend(FLUX_SHOT_COST);
+    this.fluxShot.start(shooter, teamIndex, system.profile);
     return true;
   }
 
@@ -467,6 +553,31 @@ export class Game {
 
     const phase = this.match.phase;
     const playing = (phase === 'playing' || phase === 'freeKick') && this.started;
+    const cine = this.fluxShot.active; // sequenza del tiro Flux in corso
+    const inReplay = phase === 'replay';
+
+    // sequenza cinematica del tiro Flux (timer in tempo reale)
+    this.fluxShot.update(rawDt, dt, frame.kickPressed);
+
+    // replay del goal da 2 angolazioni
+    if (inReplay && !this.replayRunning) {
+      const window = this.recorder.getWindow(3.4);
+      if (!window) {
+        this.match.finishReplay();
+      } else {
+        this.replayRunning = true;
+        this.cinematics.setReplay(true);
+        this.replayDirector.start(window, this.goalSide);
+        this.director.takeOver(CameraState.Replay, (cam, dtR) => {
+          if (!this.replayDirector.update(dtR, cam)) {
+            this.replayRunning = false;
+            this.cinematics.setReplay(false);
+            this.director.releaseOverride(true);
+            this.match.finishReplay();
+          }
+        });
+      }
+    }
 
     // rivincita a fischio finale
     if (phase === 'fulltime' && (frame.kickPressed || frame.passPressed)) {
@@ -476,9 +587,9 @@ export class Game {
       this.hud.showMessage('SI RICOMINCIA!', 1.6);
     }
 
-    // mosse Flux del giocatore (scatto E / dribbling R), con feedback
-    // chiaro quando l'energia non basta
-    if (phase === 'playing' && this.started) {
+    // mosse Flux del giocatore (scatto E / dribbling R / tiro F), con
+    // feedback chiaro quando l'energia non basta
+    if (phase === 'playing' && this.started && !cine) {
       if (frame.fluxSprintPressed && !this.useFlux(0, 'sprint', this.activePlayer)) {
         this.audio.denied();
         this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
@@ -487,10 +598,13 @@ export class Game {
         this.audio.denied();
         this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
       }
+      if (frame.fluxShotPressed) {
+        this.startFluxShot(0, this.activePlayer);
+      }
     }
 
     // --- azioni contestuali del giocatore attivo ---
-    if (playing) {
+    if (playing && !cine) {
       const hasBall = this.ballControl.owner === this.activePlayer;
       if (hasBall) {
         if (frame.passPressed) this.ballControl.pass(this.activePlayer, this.moveDir, false);
@@ -523,41 +637,48 @@ export class Game {
     }
 
     // --- IA di squadra (tattica + individuale) e carica Flux ---
-    if (phase === 'playing' && this.started) {
+    // (durante la cinematica niente nuove decisioni: gli altri continuano
+    //  in slow-motion sui bersagli correnti)
+    if (phase === 'playing' && this.started && !cine) {
       for (const ai of this.teamAIs) ai.update(dt);
       for (const f of this.fluxSystems) f.update(dt);
     }
+    if (phase === 'playing' && this.started) {
+      this.recorder.update(dt);
+    }
 
-    // --- aggiornamento giocatori ---
+    // --- aggiornamento giocatori (nel replay le posizioni sono riprodotte) ---
     const activeNow = this.activePlayer; // può essere cambiato dalle azioni sopra
-    for (let ti = 0; ti < this.teams.length; ti++) {
-      for (const p of this.teams[ti].players) {
-        if (p.role === 'portiere') continue; // gestiti dai controller
-        let cmd: PlayerCommand | null = null;
-        if (playing && p === activeNow) {
-          cmd = { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed };
-        } else if (phase === 'playing' && this.started) {
-          cmd = this.teamAIs[ti].getCommand(p);
+    if (!inReplay) {
+      for (let ti = 0; ti < this.teams.length; ti++) {
+        for (const p of this.teams[ti].players) {
+          if (p.role === 'portiere') continue; // gestiti dai controller
+          let cmd: PlayerCommand | null = null;
+          if (playing && p === activeNow && !cine) {
+            cmd = { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed };
+          } else if (phase === 'playing' && this.started) {
+            cmd = this.teamAIs[ti].getCommand(p);
+          }
+          p.update(dt, cmd);
+          p.rig.setGlow(p === activeNow ? 2.6 : 1.2);
         }
-        p.update(dt, cmd);
-        p.rig.setGlow(p === activeNow ? 2.6 : 1.2);
       }
-    }
-    for (const gk of this.goalkeepers) gk.update(dt);
-    this.resolvePlayerCollisions();
+      for (const gk of this.goalkeepers) gk.update(dt);
+      this.resolvePlayerCollisions();
 
-    // possesso, dribbling, tiro, contrasti
-    if (playing) {
-      this.ballControl.update(dt, activeNow, frame.kickHeld, frame.kickReleased, frame.moveX);
-      this.tackles.update(dt);
-    }
+      // possesso, dribbling, tiro, contrasti
+      if (playing) {
+        this.ballControl.update(dt, activeNow, frame.kickHeld, frame.kickReleased, frame.moveX);
+        this.tackles.update(dt);
+      }
 
-    // fisica della palla (ferma quando è in presa al portiere)
-    if (!this.ballControl.heldBy) {
-      this.ball.update(dt / 2);
-      this.ball.update(dt / 2);
-    } else {
-      this.ballControl.pinHeldBall();
+      // fisica della palla (ferma quando è in presa al portiere)
+      if (!this.ballControl.heldBy) {
+        this.ball.update(dt / 2);
+        this.ball.update(dt / 2);
+      } else {
+        this.ballControl.pinHeldBall();
+      }
     }
 
     this.match.update(dt);
@@ -587,6 +708,7 @@ export class Game {
 
     // audio e HUD
     this.audio.update(dt);
+    this.input.touch.setFluxShotReady(this.fluxSystems[0].ready);
     this.hud.setStamina(activeNow.stamina / 100);
     this.hud.setFlux(
       this.fluxSystems[0].ratio, this.fluxSystems[0].ready, this.fluxSystems[0].profile,

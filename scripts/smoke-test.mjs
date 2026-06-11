@@ -20,6 +20,20 @@ const check = (name, ok) => {
   if (!ok) errors.push(`verifica fallita: ${name}`);
 };
 
+// Riporta la partita in fase "playing". Il rendering software è lentissimo
+// (1-4 fps): i replay durano minuti in wall-clock, quindi dopo averli
+// osservati li mandiamo in avanti veloce via debug.
+const ensurePlaying = async (timeout = 180000) => {
+  await page.waitForFunction(
+    () => {
+      const g = window.__nova;
+      if (g.match.phase === 'replay') g.replayDirector.realElapsed = 999;
+      return g.match.phase === 'playing';
+    },
+    { timeout, polling: 500 },
+  );
+};
+
 await page.goto(url, { waitUntil: 'networkidle' });
 await page.waitForTimeout(1500);
 await page.screenshot({ path: '/tmp/shot-menu.png' });
@@ -171,7 +185,60 @@ const teleport = await page.evaluate(() => {
 });
 check('dribbling Flux OMBRA: teletrasporto corto', teleport.ok && teleport.jump > 4);
 
+// --- tiro Flux: sequenza cinematica completa (carica → volo → esito) ---
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.match.kickoff();
+  g.fluxSystems[0].value = 100;
+  g.ballControl.givePossession(g.activePlayer);
+});
+await page.keyboard.down('KeyF');
+await page.waitForTimeout(900);
+await page.keyboard.up('KeyF');
+try {
+  await page.waitForFunction(() => window.__nova.fluxShot.active, { timeout: 15000 });
+  check('tiro Flux: sequenza innescata', true);
+  try {
+    await page.waitForFunction(() => window.__nova.time.scale < 0.2, { timeout: 20000 });
+    check('tiro Flux: slow-motion attivo', true);
+  } catch {
+    check('tiro Flux: slow-motion attivo', false);
+  }
+} catch {
+  check('tiro Flux: sequenza innescata', false);
+}
+await page.waitForTimeout(4000);
+await page.screenshot({ path: '/tmp/shot-fluxshot.png' });
+let sawFluxBall = false;
+try {
+  await page.waitForFunction(() => window.__nova.ball.fluxColor !== null, { timeout: 60000 });
+  sawFluxBall = true;
+} catch { /* la palla potrebbe già aver concluso */ }
+check('tiro Flux: palla avvolta dall\'energia', sawFluxBall);
+await page.screenshot({ path: '/tmp/shot-fluxflight.png' });
+try {
+  await page.waitForFunction(
+    () => !window.__nova.fluxShot.active && window.__nova.time.scale > 0.9,
+    { timeout: 120000 },
+  );
+  const outcome = await page.evaluate(() => ({
+    score: window.__nova.match.score.join('-'),
+    phase: window.__nova.match.phase,
+  }));
+  console.log('  esito tiro Flux:', JSON.stringify(outcome));
+  check('tiro Flux: sequenza conclusa e tempo ripristinato', true);
+} catch {
+  check('tiro Flux: sequenza conclusa e tempo ripristinato', false);
+}
+// se è stato goal, completa il giro celebrazione→replay→kickoff
+try {
+  await ensurePlaying();
+} catch {
+  errors.push('la partita non è ripresa dopo il tiro Flux');
+}
+
 // --- regressione: la punizione IA non blocca più la partita ---
+await ensurePlaying().catch(() => errors.push('fase playing non raggiunta prima della punizione'));
 await page.evaluate(() => {
   const g = window.__nova;
   g.match.foul(g.teams[0].fieldPlayers[0], g.teams[1].fieldPlayers[2], g.teams[1].fieldPlayers[2].position.clone());
@@ -193,6 +260,7 @@ check('difficoltà cambiata a DIFFICILE', diffOk);
 await page.evaluate(() => window.__nova.setDifficulty('normale'));
 
 // --- parata del portiere: tiro centrale parabile ---
+await ensurePlaying().catch(() => errors.push('fase playing non raggiunta prima della parata'));
 const saveResult = await page.evaluate(() => {
   const g = window.__nova;
   g.ball.position.set(16, 1, 0);
@@ -239,11 +307,20 @@ try {
   check('goal sul tiro imparabile', false);
 }
 await page.screenshot({ path: '/tmp/shot-goal.png' });
+// dopo la celebrazione parte il replay automatico da 2 angolazioni
+let replaySeen = false;
 try {
-  await page.waitForFunction(() => window.__nova.match.phase === 'playing', { timeout: 60000 });
-  check('kickoff dopo la celebrazione', true);
+  await page.waitForFunction(() => window.__nova.match.phase === 'replay', { timeout: 90000 });
+  replaySeen = true;
+  await page.waitForTimeout(4000); // lascialo girare per lo screenshot
+  await page.screenshot({ path: '/tmp/shot-replay.png' });
+} catch { /* potrebbe essere già passato */ }
+check('replay del goal avviato', replaySeen);
+try {
+  await ensurePlaying();
+  check('kickoff dopo celebrazione e replay', true);
 } catch {
-  check('kickoff dopo la celebrazione', false);
+  check('kickoff dopo celebrazione e replay', false);
 }
 
 // --- cronometro che scorre ---
