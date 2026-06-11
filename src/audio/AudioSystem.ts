@@ -216,6 +216,94 @@ export class AudioSystem {
     noise.start(t);
   }
 
+  /** "Whoosh" energetico del Flux, con timbro diverso per ogni energia. */
+  fluxSurge(id: 'gelo' | 'ombra' | 'ruggito', strong: boolean): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const dur = strong ? 0.45 : 0.3;
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(strong ? 0.3 : 0.2, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+    g.connect(this.master);
+
+    if (id === 'gelo') {
+      // scintillio cristallino ascendente
+      const osc = ctx.createOscillator();
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(900, t);
+      osc.frequency.exponentialRampToValueAtTime(2600, t + dur);
+      osc.connect(g);
+      osc.start(t);
+      osc.stop(t + dur);
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer(dur);
+      const hp = ctx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 3200;
+      noise.connect(hp).connect(g);
+      noise.start(t);
+    } else if (id === 'ombra') {
+      // risucchio scuro discendente
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer(dur);
+      const lp = ctx.createBiquadFilter();
+      lp.type = 'lowpass';
+      lp.frequency.setValueAtTime(1400, t);
+      lp.frequency.exponentialRampToValueAtTime(140, t + dur);
+      noise.connect(lp).connect(g);
+      noise.start(t);
+      const sub = ctx.createOscillator();
+      sub.type = 'sine';
+      sub.frequency.setValueAtTime(90, t);
+      sub.frequency.exponentialRampToValueAtTime(38, t + dur);
+      sub.connect(g);
+      sub.start(t);
+      sub.stop(t + dur);
+    } else {
+      // ringhio ambrato: due seghe detonate + rumore
+      for (const f of [62, 93]) {
+        const osc = ctx.createOscillator();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(f, t);
+        osc.frequency.exponentialRampToValueAtTime(f * 0.6, t + dur);
+        const og = ctx.createGain();
+        og.gain.value = 0.5;
+        osc.connect(og).connect(g);
+        osc.start(t);
+        osc.stop(t + dur);
+      }
+      const noise = ctx.createBufferSource();
+      noise.buffer = this.noiseBuffer(dur);
+      const bp = ctx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 300;
+      bp.Q.value = 1.5;
+      noise.connect(bp).connect(g);
+      noise.start(t);
+    }
+  }
+
+  /** Campanellino: la barra Flux è piena (PRONTO). */
+  fluxReady(): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    for (let i = 0; i < 2; i++) {
+      const osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = i === 0 ? 1320 : 1980;
+      const g = ctx.createGain();
+      g.gain.setValueAtTime(0.0001, t + i * 0.09);
+      g.gain.exponentialRampToValueAtTime(0.12, t + i * 0.09 + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + i * 0.09 + 0.3);
+      osc.connect(g).connect(this.master);
+      osc.start(t + i * 0.09);
+      osc.stop(t + i * 0.09 + 0.32);
+    }
+  }
+
   update(dt: number): void {
     if (this.crowdGain && this.crowdSwellTarget > 0) {
       this.crowdSwellTarget = Math.max(0, this.crowdSwellTarget - dt);

@@ -28,6 +28,14 @@ export type AIState =
   | 'insegui'
   | 'rientra';
 
+/** Ganci verso il sistema Flux: l'IA li usa se la squadra ha energia. */
+export interface FluxHooks {
+  /** Tenta lo scatto Flux: true se attivato (energia spesa). */
+  trySprint: (p: Player) => boolean;
+  /** Tenta il dribbling Flux: true se attivato. */
+  tryDribble: (p: Player) => boolean;
+}
+
 /** Cervello individuale: stato + bersaglio di movimento assegnati dal TeamAI. */
 class FieldBrain {
   state: AIState = 'rientra';
@@ -81,6 +89,7 @@ export class TeamAI {
     private getDifficulty: () => DifficultyParams,
     /** true se quel giocatore è guidato dall'umano in questo momento. */
     private isHuman: (p: Player) => boolean,
+    private fluxHooks: FluxHooks | null = null,
   ) {
     for (const p of team.fieldPlayers) this.brains.set(p, new FieldBrain(p));
   }
@@ -370,6 +379,20 @@ export class TeamAI {
     const distGoal = this.tmpB.copy(goalCenter).sub(owner.position).setY(0).length();
     const pressure = this.nearestPressure(owner);
 
+    // Flux: il "personaggio stella" (la punta) lo usa più volentieri
+    if (this.fluxHooks) {
+      const star = this.team.fieldPlayers[this.team.fieldPlayers.length - 1];
+      const tendency = diff.fluxTendency * (owner === star ? 1.6 : 1);
+      // dribbling Flux sotto pressione
+      if (pressure < 3 && Math.random() < tendency) {
+        if (this.fluxHooks.tryDribble(owner)) return;
+      }
+      // scatto Flux a campo aperto
+      if (pressure > 7 && distGoal > 20 && Math.random() < tendency * 0.5) {
+        this.fluxHooks.trySprint(owner);
+      }
+    }
+
     // tiro: a portata e con specchio ragionevole
     if (distGoal < diff.shootRange && Math.abs(owner.position.z) < HALF_WIDTH * 0.65) {
       const aimZ = (Math.random() - 0.5) * GOAL_WIDTH * 0.7;
@@ -461,6 +484,15 @@ export class TeamAI {
       const brain = this.brains.get(p)!;
       if (this.isHuman(p) || brain.state !== 'pressa') continue;
       const d = p.position.distanceTo(carrier.position);
+      // recupero in scatto Flux se il portatore sta scappando
+      if (
+        this.fluxHooks &&
+        d > 6 && d < 16 &&
+        carrier.sprinting &&
+        Math.random() < diff.fluxTendency * 0.4
+      ) {
+        this.fluxHooks.trySprint(p);
+      }
       if (d < 2.1 && Math.random() < diff.tackleAggression) {
         // orienta il contrasto verso la palla
         p.facing = Math.atan2(

@@ -17,11 +17,20 @@ import { Match } from '../match/Match';
 import { Tackles } from '../match/Tackles';
 import { Team } from '../match/Team';
 import { Ball } from '../physics/Ball';
+import { FLUX_PROFILES } from '../flux/FluxProfile';
+import { FluxMoves } from '../flux/FluxMoves';
+import { FluxSystem } from '../flux/FluxSystem';
+import { AfterImages } from '../vfx/AfterImages';
 import { ChargeRing } from '../vfx/ChargeRing';
 import { ParticlePool } from '../vfx/ParticlePool';
 import { Hud } from '../ui/Hud';
 import { Time } from './Time';
-import { HALF_LENGTH, PLAYER_RADIUS } from './constants';
+import {
+  FLUX_DRIBBLE_COST,
+  FLUX_SPRINT_COST,
+  HALF_LENGTH,
+  PLAYER_RADIUS,
+} from './constants';
 
 /**
  * Cuore del gioco: collega input, fisica, regia, vfx, audio, match e HUD.
@@ -51,6 +60,10 @@ export class Game {
   private goalkeepers: Goalkeeper[];
   private teamAIs: TeamAI[];
   difficulty: DifficultyName = 'normale';
+  readonly fluxSystems: FluxSystem[];
+  private fluxMoves: FluxMoves;
+  private afterImages = new AfterImages(16);
+  private lastPassReceiver: Player | null = null;
   private audio = new AudioSystem();
   private particles = new ParticlePool(768);
   private chargeRing = new ChargeRing();
@@ -95,30 +108,46 @@ export class Game {
     this.scene.add(this.particles.points);
     this.scene.add(this.chargeRing.mesh);
 
-    // --- squadre: GELO (giocatore) contro OMBRA ---
+    // --- squadre: GELO (giocatore) contro OMBRA o RUGGITO ---
+    // (la selezione squadra completa arriva col menu della milestone 6;
+    //  intanto ?avversario=ruggito sceglie il terzo Flux)
+    const opponentConfigs = {
+      ombra: {
+        name: 'OMBRA',
+        defendsSide: 1,
+        color: 0xb44aff,
+        flux: 'ombra' as const,
+        colors: { primary: 0x4a2a6e, secondary: 0x1a1024, glow: 0xb44aff },
+        gkColors: { primary: 0x32184e, secondary: 0x120a1c, glow: 0xd99aff },
+        roster: ['Tenebr', 'Nox', 'Lyrr', 'Vesper', 'Crepus', 'Umbra', 'Vrax'],
+      },
+      ruggito: {
+        name: 'RUGGITO',
+        defendsSide: 1,
+        color: 0xffa53c,
+        flux: 'ruggito' as const,
+        colors: { primary: 0x8a4a1a, secondary: 0x2e1606, glow: 0xffa53c },
+        gkColors: { primary: 0x6a3210, secondary: 0x1e0e04, glow: 0xffd28c },
+        roster: ['Korr', 'Brann', 'Tarvok', 'Sela', 'Drogh', 'Maula', 'Ragnar'],
+      },
+    };
+    const oppKey = new URLSearchParams(window.location.search).get('avversario');
+    const opponent = oppKey === 'ruggito' ? opponentConfigs.ruggito : opponentConfigs.ombra;
+
     this.teams = [
       new Team(
         {
           name: 'GELO',
           defendsSide: -1,
           color: 0x49e9ff,
+          flux: 'gelo',
           colors: { primary: 0x2a6f9e, secondary: 0x10222e, glow: 0x49e9ff },
           gkColors: { primary: 0x1a4a72, secondary: 0x0c1a26, glow: 0x9af2ff },
           roster: ['Boreas', 'Ilya', 'Vesna', 'Nyra', 'Sorin', 'Mirka', 'Kael'],
         },
         0,
       ),
-      new Team(
-        {
-          name: 'OMBRA',
-          defendsSide: 1,
-          color: 0xb44aff,
-          colors: { primary: 0x4a2a6e, secondary: 0x1a1024, glow: 0xb44aff },
-          gkColors: { primary: 0x32184e, secondary: 0x120a1c, glow: 0xd99aff },
-          roster: ['Tenebr', 'Nox', 'Lyrr', 'Vesper', 'Crepus', 'Umbra', 'Vrax'],
-        },
-        1,
-      ),
+      new Team(opponent, 1),
     ];
     this.players = [...this.teams[0].players, ...this.teams[1].players];
     for (const p of this.players) this.scene.add(p.object3d);
@@ -138,11 +167,15 @@ export class Game {
     this.activeMarker.rotation.x = -Math.PI / 2;
     this.scene.add(this.activeMarker);
 
+    this.scene.add(this.afterImages.group);
+
     // --- sistemi di gioco ---
     this.input = new InputSystem(container);
     this.ballControl = new BallControl(this.ball, this.players);
     this.tackles = new Tackles(this.ball, this.ballControl);
     this.match = new Match(this.ball, this.teams);
+    this.fluxSystems = this.teams.map((t) => new FluxSystem(FLUX_PROFILES[t.config.flux]));
+    this.fluxMoves = new FluxMoves(this.ball, this.ballControl, this.particles, this.afterImages, this.audio);
     this.goalkeepers = this.teams.map(
       (team) => new Goalkeeper(team.goalkeeper, team, this.ball, this.ballControl),
     );
@@ -158,6 +191,10 @@ export class Game {
         this.teams[1], this.teams[0], this.ball, this.ballControl, this.tackles,
         () => DIFFICULTIES[this.difficulty],
         () => false,
+        {
+          trySprint: (p) => this.useFlux(1, 'sprint', p),
+          tryDribble: (p) => this.useFlux(1, 'dribble', p),
+        },
       ),
     ];
 
@@ -241,20 +278,26 @@ export class Game {
     this.ballControl.events.onPass = (info) => {
       this.audio.kick(0.25);
       this.match.freeKickTaken();
+      this.lastPassReceiver = info.receiver;
       if (info.passer.team === 0 && info.receiver.team === 0 && info.receiver.role === 'campo') {
         this.setActivePlayer(info.receiver);
       }
     };
 
     // cambio automatico intelligente: quando un compagno conquista palla,
-    // il controllo passa a lui
+    // il controllo passa a lui; il passaggio riuscito carica il Flux
     this.ballControl.events.onPossession = (p) => {
       if (p && p.team === 0 && p.role === 'campo') this.setActivePlayer(p);
+      if (p && this.lastPassReceiver === p) {
+        this.fluxSystems[p.team].creditPass();
+      }
+      this.lastPassReceiver = null;
     };
 
-    // contrasti → audio e falli
+    // contrasti → audio, falli, carica Flux
     this.tackles.events.onWin = (tackler) => {
       this.audio.bounce(0.8);
+      this.fluxSystems[tackler.team].creditTackle();
       if (tackler.team === 0) this.setActivePlayer(this.nearestFieldPlayer(this.ball.position, tackler));
     };
     this.tackles.events.onFoul = (offender, victim, spot) => {
@@ -295,14 +338,24 @@ export class Game {
       };
     }
 
-    // salti → whoosh
+    // salti → whoosh; il doppio salto è giocata spettacolare (carica Flux)
     for (const p of this.players) {
-      p.events.onJump = (_pl, double) => this.audio.whoosh(double ? 1 : 0.6);
+      p.events.onJump = (pl, double) => {
+        this.audio.whoosh(double ? 1 : 0.6);
+        if (double) this.fluxSystems[pl.team].creditAerial();
+      };
     }
+
+    // barra piena → segnale PRONTO per la squadra del giocatore
+    this.fluxSystems[0].events.onReady = () => {
+      this.audio.fluxReady();
+      this.hud.showMessage('FLUX PRONTO!', 1.4);
+    };
 
     // goal → messaggio, boato, orbita celebrativa, esplosione di particelle
     this.match.events.onGoal = (scoringTeam, ballPos) => {
       const teamName = scoringTeam >= 0 ? this.teams[scoringTeam].name : '';
+      if (scoringTeam >= 0) this.fluxSystems[scoringTeam].creditGoal();
       this.hud.showMessage(`GOAL! ${teamName}`, 2.8);
       this.hud.setScore(this.match);
       this.audio.whistle();
@@ -347,6 +400,21 @@ export class Game {
     if (this.difficulty === d) return;
     this.difficulty = d;
     this.hud.showMessage(`DIFFICOLTÀ: ${DIFFICULTIES[d].label}`, 1.4);
+  }
+
+  /** Tenta una mossa Flux per la squadra: spende energia ed esegue. */
+  useFlux(teamIndex: number, kind: 'sprint' | 'dribble', player: Player): boolean {
+    if (this.match.phase !== 'playing' || player.action !== 'normale') return false;
+    const system = this.fluxSystems[teamIndex];
+    const cost = kind === 'sprint' ? FLUX_SPRINT_COST : FLUX_DRIBBLE_COST;
+    if (!system.spend(cost)) return false;
+    const opponents = this.teams[1 - teamIndex].players;
+    if (kind === 'sprint') {
+      this.fluxMoves.sprint(player, system.profile);
+    } else {
+      this.fluxMoves.dribble(player, system.profile, opponents);
+    }
+    return true;
   }
 
   private setActivePlayer(p: Player | null): void {
@@ -403,8 +471,15 @@ export class Game {
     // rivincita a fischio finale
     if (phase === 'fulltime' && (frame.kickPressed || frame.passPressed)) {
       this.match.restart();
+      for (const f of this.fluxSystems) f.reset();
       this.hud.setScore(this.match);
       this.hud.showMessage('SI RICOMINCIA!', 1.6);
+    }
+
+    // mosse Flux del giocatore (scatto E / dribbling R)
+    if (phase === 'playing' && this.started) {
+      if (frame.fluxSprintPressed) this.useFlux(0, 'sprint', this.activePlayer);
+      if (frame.fluxDribblePressed) this.useFlux(0, 'dribble', this.activePlayer);
     }
 
     // --- azioni contestuali del giocatore attivo ---
@@ -440,9 +515,10 @@ export class Game {
       }
     }
 
-    // --- IA di squadra (tattica + individuale) ---
+    // --- IA di squadra (tattica + individuale) e carica Flux ---
     if (phase === 'playing' && this.started) {
       for (const ai of this.teamAIs) ai.update(dt);
+      for (const f of this.fluxSystems) f.update(dt);
     }
 
     // --- aggiornamento giocatori ---
@@ -484,9 +560,12 @@ export class Game {
       ball: this.ball,
       active: activeNow,
       charging: this.ballControl.charging,
+      fluxBoost: activeNow.boostTimer > 0,
     });
 
     // vfx
+    this.fluxMoves.update(dt, this.players);
+    this.afterImages.update(dt);
     this.particles.update(dt);
     this.chargeRing.update(
       this.ballControl.visibleCharge,
@@ -502,6 +581,10 @@ export class Game {
     // audio e HUD
     this.audio.update(dt);
     this.hud.setStamina(activeNow.stamina / 100);
+    this.hud.setFlux(
+      this.fluxSystems[0].ratio, this.fluxSystems[0].ready, this.fluxSystems[0].profile,
+      this.fluxSystems[1].ratio, this.fluxSystems[1].profile,
+    );
     this.hud.setClock(this.match.half, this.match.clock);
     this.hud.update(rawDt);
     this.hud.tickFps(frameDt);

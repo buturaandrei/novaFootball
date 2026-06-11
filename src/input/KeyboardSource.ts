@@ -34,6 +34,8 @@ export class KeyboardSource implements InputSource {
     s.pass = this.down('KeyK');
     s.lob = this.down('KeyL');
     s.switchPlayer = this.down('KeyQ', 'Tab');
+    s.fluxSprint = this.down('KeyE');
+    s.fluxDribble = this.down('KeyR');
     return s;
   }
 }

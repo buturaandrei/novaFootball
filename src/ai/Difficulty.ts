@@ -22,6 +22,8 @@ export interface DifficultyParams {
   shootRange: number;
   /** Fattore sulla velocità massima richiesta dall'IA (0..1). */
   speedFactor: number;
+  /** Propensione a spendere Flux (scatto/dribbling, e tiro dalla M5). */
+  fluxTendency: number;
 }
 
 export type DifficultyName = 'facile' | 'normale' | 'difficile';
@@ -37,6 +39,7 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     sprintTendency: 0.3,
     shootRange: 13,
     speedFactor: 0.82,
+    fluxTendency: 0.12,
   },
   normale: {
     label: 'NORMALE',
@@ -48,6 +51,7 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     sprintTendency: 0.6,
     shootRange: 16,
     speedFactor: 0.94,
+    fluxTendency: 0.35,
   },
   difficile: {
     label: 'DIFFICILE',
@@ -59,5 +63,6 @@ export const DIFFICULTIES: Record<DifficultyName, DifficultyParams> = {
     sprintTendency: 0.88,
     shootRange: 19,
     speedFactor: 1.0,
+    fluxTendency: 0.65,
   },
 };

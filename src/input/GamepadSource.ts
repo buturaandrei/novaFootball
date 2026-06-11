@@ -34,7 +34,9 @@ export class GamepadSource implements InputSource {
       s.kick = s.kick || btn(2); // X / Quadrato
       s.lob = s.lob || btn(3); // Y / Triangolo
       s.switchPlayer = s.switchPlayer || btn(4); // LB
-      s.sprint = s.sprint || btn(5) || btn(7); // RB o RT
+      s.sprint = s.sprint || btn(5); // RB
+      s.fluxSprint = s.fluxSprint || btn(7); // RT
+      s.fluxDribble = s.fluxDribble || btn(6); // LT
     }
     s.moveX = Math.max(-1, Math.min(1, s.moveX));
     s.moveY = Math.max(-1, Math.min(1, s.moveY));

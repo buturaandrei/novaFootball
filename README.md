@@ -38,9 +38,14 @@ node scripts/smoke-test.mjs
 | Tiro (carica) / scivolata in difesa | J | X | pulsante TIRO |
 | Passaggio rasoterra / contrasto in piedi | K | B | pulsante PASSA |
 | Filtrante alto | L | Y | pulsante LANCIO |
+| Scatto Flux | E | RT | pulsante ⚡SCATTO |
+| Dribbling Flux | R | LT | pulsante ⚡DRIBLO |
 | Cambio giocatore | Q / Tab | LB | pulsante CAMBIO |
 | Difficoltà (facile/normale/difficile) | 1 / 2 / 3 | — | — |
 | Mostra/nascondi aiuto | H | — | — |
+
+Avversario alternativo (in attesa del menu della milestone 6):
+`?avversario=ruggito` nell'URL per affrontare RUGGITO invece di OMBRA.
 
 ## Stato delle milestone
 
@@ -86,6 +91,22 @@ node scripts/smoke-test.mjs
      precisione di tiro/passaggio, raggio del pressing, aggressività nei
      contrasti e propensione allo scatto — non solo la velocità
    - I compagni dell'umano giocano sempre a livello "normale"
-4. ⬜ Sistema Flux: barra, scatto e dribbling Flux per le 3 squadre
+4. ✅ **Sistema Flux: barra, scatto e dribbling Flux per le 3 squadre**
+   - Barra Flux per squadra: si carica con tempo, passaggi riusciti,
+     contrasti vinti, doppi salti e goal; si svuota a ogni uso; stato
+     "PRONTO" pulsante quando è piena (per il tiro Flux della milestone 5)
+   - Tre identità complete con meccaniche diverse, non solo colori:
+     **GELO** (Soffio di Gelo: Scia Polare + Passo di Brina, guizzo con
+     after-image di ghiaccio e palla incollata), **OMBRA** (Velo d'Ombra:
+     Corsa Notturna + Passo nel Buio, vero teletrasporto corto),
+     **RUGGITO** (Ruggito Solare: Carica Ferina + Zampata, onda d'urto
+     che sbilancia e stordisce i difensori vicini)
+   - Audio Flux sintetizzato distinto per energia (cristalli / risucchio
+     scuro / ringhio ambrato) + segnale PRONTO
+   - L'IA avversaria spende Flux: la punta ("personaggio stella") usa il
+     dribbling Flux sotto pressione, lo scatto a campo aperto e in
+     recupero — frequenza legata alla difficoltà
+   - HUD: barra Flux col nome dell'energia + mini-barra avversaria;
+     scie after-image e FOV allargato negli scatti Flux
 5. ⬜ Tiro Flux con sequenza cinematica completa, parata Flux, replay dei goal
 6. ⬜ Arena completa, pubblico, audio finale, HUD/menu, polish e bilanciamento

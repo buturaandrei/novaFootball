@@ -40,6 +40,8 @@ export interface DirectorContext {
   ball: Ball;
   active: Player;
   charging: boolean;
+  /** true se il giocatore attivo è in scatto Flux (FOV più largo). */
+  fluxBoost?: boolean;
 }
 
 /**
@@ -133,6 +135,7 @@ export class CameraDirector {
         );
 
         targetFov = ctx.active.sprinting ? 62 : 55;
+        if (ctx.fluxBoost) targetFov += 6; // lo scatto Flux spalanca il campo visivo
         if (ctx.charging) targetFov -= 4; // leggera zoomata durante la carica
         break;
       }

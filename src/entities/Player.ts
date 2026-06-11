@@ -60,6 +60,9 @@ export class Player {
   diveSide = 1;
   /** Posizione di formazione assegnata (riferimento per kickoff e IA). */
   readonly homePosition = new THREE.Vector3();
+  /** Boost di velocità temporaneo (scatto Flux). */
+  boostFactor = 1;
+  boostTimer = 0;
   readonly team: number; // 0 = attacca +x, 1 = attacca -x (vedi Match)
   readonly role: PlayerRole;
   readonly name: string;
@@ -80,7 +83,14 @@ export class Player {
   }
 
   get maxSpeed(): number {
-    return this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    const base = this.sprinting ? SPRINT_SPEED : WALK_SPEED;
+    return this.boostTimer > 0 ? base * this.boostFactor : base;
+  }
+
+  /** Attiva un boost temporaneo di velocità (scatto Flux). */
+  applyBoost(factor: number, duration: number): void {
+    this.boostFactor = factor;
+    this.boostTimer = duration;
   }
 
   /** true se il giocatore può ricevere comandi di movimento. */
@@ -120,6 +130,7 @@ export class Player {
   }
 
   update(dt: number, cmd: PlayerCommand | null): void {
+    if (this.boostTimer > 0) this.boostTimer -= dt;
     if (this.action !== 'normale') {
       this.updateAction(dt);
       return;

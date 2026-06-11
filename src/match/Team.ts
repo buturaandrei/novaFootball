@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import { HALF_LENGTH, HALF_WIDTH } from '../core/constants';
 import { Player } from '../entities/Player';
 import type { RigColors } from '../entities/PlayerRig';
+import type { FluxProfileId } from '../flux/FluxProfile';
 
 export interface TeamConfig {
   name: string;
   /** Lato difeso: -1 difende la porta a x negativo, +1 quella a x positivo. */
   defendsSide: number;
   color: number;
+  /** Identità Flux della squadra (energia planetaria). */
+  flux: FluxProfileId;
   colors: RigColors;
   gkColors: RigColors;
   /** 7 nomi: portiere + 6 di movimento (2 difensori, 3 centrocampisti, 1 punta). */

@@ -66,3 +66,16 @@ export const GK_LINE_DISTANCE = 1.6;   // distanza base dalla linea di porta
 // Partita
 export const HALF_DURATION = 180; // 2 tempi da 3 minuti
 export const FREE_KICK_DISTANCE = 6; // distanza minima degli avversari dalla punizione
+
+// Flux
+export const FLUX_MAX = 100;
+export const FLUX_TIME_RATE = 1.5;   // carica passiva al secondo
+export const FLUX_PASS_BONUS = 6;    // passaggio riuscito
+export const FLUX_TACKLE_BONUS = 8;  // contrasto vinto
+export const FLUX_AERIAL_BONUS = 3;  // giocata spettacolare (doppio salto)
+export const FLUX_GOAL_BONUS = 18;
+export const FLUX_SPRINT_COST = 30;
+export const FLUX_DRIBBLE_COST = 40;
+export const FLUX_SHOT_COST = 100;   // il tiro Flux (milestone 5) svuota la barra
+export const FLUX_SPRINT_FACTOR = 1.45;
+export const FLUX_SPRINT_DURATION = 1.7;

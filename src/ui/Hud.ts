@@ -1,4 +1,9 @@
 import type { Match } from '../match/Match';
+import type { FluxProfile } from '../flux/FluxProfile';
+
+function hexColor(c: number): string {
+  return `#${c.toString(16).padStart(6, '0')}`;
+}
 
 function formatClock(seconds: number): string {
   const s = Math.max(0, Math.ceil(seconds));
@@ -16,6 +21,10 @@ export class Hud {
   private scoreEl: HTMLDivElement;
   private clockEl: HTMLDivElement;
   private staminaFill: HTMLDivElement;
+  private fluxLabel: HTMLDivElement;
+  private fluxFill: HTMLDivElement;
+  private fluxReadyEl: HTMLDivElement;
+  private oppFluxFill: HTMLDivElement;
   private messageEl: HTMLDivElement;
   private fpsEl: HTMLDivElement;
   private helpEl: HTMLDivElement;
@@ -74,6 +83,42 @@ export class Hud {
     staminaBox.appendChild(staminaBar);
     this.root.appendChild(staminaBox);
 
+    // barra Flux sopra la stamina
+    const fluxBox = document.createElement('div');
+    fluxBox.style.cssText = 'position:absolute;left:22px;bottom:64px;width:200px;';
+    this.fluxLabel = document.createElement('div');
+    this.fluxLabel.textContent = 'FLUX';
+    this.fluxLabel.style.cssText =
+      'font-size:11px;letter-spacing:3px;margin-bottom:4px;opacity:.9;text-shadow:0 0 8px rgba(110,230,255,.7);';
+    fluxBox.appendChild(this.fluxLabel);
+    const fluxBar = document.createElement('div');
+    fluxBar.style.cssText =
+      'position:relative;height:12px;border:1px solid rgba(160,220,255,.6);border-radius:6px;overflow:hidden;' +
+      'background:rgba(8,24,40,.7);box-shadow:0 0 14px rgba(110,200,255,.3);';
+    this.fluxFill = document.createElement('div');
+    this.fluxFill.style.cssText =
+      'height:100%;width:25%;border-radius:5px;background:#6ef0ff;box-shadow:0 0 12px #6ef0ff;';
+    fluxBar.appendChild(this.fluxFill);
+    this.fluxReadyEl = document.createElement('div');
+    this.fluxReadyEl.textContent = 'PRONTO';
+    this.fluxReadyEl.style.cssText =
+      'position:absolute;inset:0;display:none;align-items:center;justify-content:center;' +
+      'font-size:9px;font-weight:900;letter-spacing:4px;color:#04111e;' +
+      'animation:novaPulse 1s ease-in-out infinite;';
+    fluxBar.appendChild(this.fluxReadyEl);
+    fluxBox.appendChild(fluxBar);
+    this.root.appendChild(fluxBox);
+
+    // mini-barra Flux dell'avversario, sotto il cronometro
+    this.oppFluxFill = document.createElement('div');
+    const oppFluxBar = document.createElement('div');
+    oppFluxBar.style.cssText =
+      'position:absolute;top:88px;left:50%;transform:translateX(-50%);width:110px;height:5px;' +
+      'border:1px solid rgba(160,220,255,.35);border-radius:3px;overflow:hidden;background:rgba(8,24,40,.6);';
+    this.oppFluxFill.style.cssText = 'height:100%;width:25%;background:#b44aff;';
+    oppFluxBar.appendChild(this.oppFluxFill);
+    this.root.appendChild(oppFluxBar);
+
     // messaggi evento (GOAL!, ecc.)
     this.messageEl = document.createElement('div');
     this.messageEl.style.cssText =
@@ -93,8 +138,9 @@ export class Hud {
     this.helpEl = document.createElement('div');
     this.helpEl.innerHTML =
       '<b>WASD</b> muovi · <b>MAIUSC</b> scatto · <b>SPAZIO</b> salto ·' +
-      ' <b>J</b> tiro / scivolata · <b>K</b> passaggio / contrasto ·' +
-      ' <b>L</b> filtrante · <b>Q</b> cambio · <b>1/2/3</b> difficoltà · <b>H</b> nascondi';
+      ' <b>J</b> tiro / scivolata · <b>K</b> passaggio / contrasto · <b>L</b> filtrante ·' +
+      ' <b>E</b> scatto Flux · <b>R</b> dribbling Flux ·' +
+      ' <b>Q</b> cambio · <b>1/2/3</b> difficoltà · <b>H</b> nascondi';
     this.helpEl.style.cssText =
       'position:absolute;right:18px;bottom:20px;font-size:12px;opacity:.75;letter-spacing:.5px;' +
       'padding:6px 12px;background:rgba(6,20,34,.6);border:1px solid rgba(80,220,255,.3);border-radius:5px;';
@@ -151,6 +197,23 @@ export class Hud {
       `<span style="color:#7fe8ff">${match.teams[0].name}</span>` +
       ` &nbsp;${a} — ${b}&nbsp; ` +
       `<span style="color:#ffba7a">${match.teams[1].name}</span>`;
+  }
+
+  setFlux(
+    ratio: number,
+    ready: boolean,
+    profile: FluxProfile,
+    oppRatio: number,
+    oppProfile: FluxProfile,
+  ): void {
+    this.fluxLabel.textContent = `FLUX — ${profile.energyName}`;
+    const color = hexColor(profile.color);
+    this.fluxFill.style.width = `${Math.min(100, ratio * 100)}%`;
+    this.fluxFill.style.background = color;
+    this.fluxFill.style.boxShadow = `0 0 12px ${color}`;
+    this.fluxReadyEl.style.display = ready ? 'flex' : 'none';
+    this.oppFluxFill.style.width = `${Math.min(100, oppRatio * 100)}%`;
+    this.oppFluxFill.style.background = hexColor(oppProfile.color);
   }
 
   setClock(half: number, seconds: number): void {

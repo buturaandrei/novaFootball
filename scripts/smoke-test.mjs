@@ -127,6 +127,53 @@ try {
 }
 await page.screenshot({ path: '/tmp/shot-ai.png' });
 
+// --- Flux: la barra si carica col tempo ---
+const fluxA = await page.evaluate(() => window.__nova.fluxSystems[0].value);
+await page.waitForTimeout(3000);
+const fluxB = await page.evaluate(() => window.__nova.fluxSystems[0].value);
+check('la barra Flux si carica col tempo', fluxB > fluxA);
+
+// --- Flux: scatto del giocatore (tasto E) spende energia e dà boost ---
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.setDifficulty('normale');
+  g.match.kickoff();
+  g.fluxSystems[0].value = 100;
+});
+await page.keyboard.down('KeyE');
+await page.waitForTimeout(800);
+await page.keyboard.up('KeyE');
+const sprintFlux = await page.evaluate(() => {
+  const g = window.__nova;
+  return { boost: g.activePlayer.boostTimer > 0, value: g.fluxSystems[0].value };
+});
+check('scatto Flux attivo (boost + energia spesa)', sprintFlux.boost && sprintFlux.value < 100);
+await page.screenshot({ path: '/tmp/shot-flux.png' });
+
+// --- Flux: dribbling OMBRA = teletrasporto corto ---
+const teleport = await page.evaluate(() => {
+  const g = window.__nova;
+  g.fluxSystems[1].value = 100;
+  const p = g.teams[1].fieldPlayers[3];
+  const before = p.position.clone();
+  const ok = g.useFlux(1, 'dribble', p);
+  return { ok, jump: p.position.distanceTo(before) };
+});
+check('dribbling Flux OMBRA: teletrasporto corto', teleport.ok && teleport.jump > 4);
+
+// --- regressione: la punizione IA non blocca più la partita ---
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.match.foul(g.teams[0].fieldPlayers[0], g.teams[1].fieldPlayers[2], g.teams[1].fieldPlayers[2].position.clone());
+});
+try {
+  await page.waitForFunction(() => window.__nova.match.phase === 'freeKick', { timeout: 10000 });
+  await page.waitForFunction(() => window.__nova.match.phase === 'playing', { timeout: 90000 });
+  check('la punizione IA viene battuta e il gioco riprende', true);
+} catch {
+  check('la punizione IA viene battuta e il gioco riprende', false);
+}
+
 // --- difficoltà selezionabile ---
 const diffOk = await page.evaluate(() => {
   window.__nova.setDifficulty('difficile');

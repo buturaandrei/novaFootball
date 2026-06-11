@@ -91,6 +91,12 @@ export class TouchSource implements InputSource {
     this.makeButton('CAMBIO', 'right:208px;bottom:122px;width:52px;height:52px;', (down) => {
       this.state.switchPlayer = down;
     });
+    this.makeButton('⚡SCATTO', 'right:108px;bottom:238px;width:58px;height:58px;', (down) => {
+      this.state.fluxSprint = down;
+    }, true);
+    this.makeButton('⚡DRIBLO', 'right:188px;bottom:200px;width:58px;height:58px;', (down) => {
+      this.state.fluxDribble = down;
+    }, true);
 
     // Mostra i controlli su dispositivi touch, o al primo tocco su ibridi.
     if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
@@ -123,16 +129,18 @@ export class TouchSource implements InputSource {
     this.state.moveY = -dy / this.stickRadius;
   }
 
-  private makeButton(label: string, pos: string, onChange: (down: boolean) => void): void {
+  private makeButton(label: string, pos: string, onChange: (down: boolean) => void, flux = false): void {
     const btn = document.createElement('div');
     btn.textContent = label;
+    const border = flux ? 'rgba(190,160,255,.65)' : 'rgba(80,220,255,.55)';
+    const glow = flux ? 'rgba(170,110,255,.35)' : 'rgba(60,200,255,.25)';
     btn.style.cssText =
       `position:absolute;${pos}border-radius:50%;pointer-events:auto;touch-action:none;` +
-      'display:flex;align-items:center;justify-content:center;' +
-      'border:2px solid rgba(80,220,255,.55);color:rgba(190,245,255,.95);' +
-      'font-size:11px;font-weight:700;letter-spacing:1px;' +
+      'display:flex;align-items:center;justify-content:center;text-align:center;' +
+      `border:2px solid ${border};color:rgba(190,245,255,.95);` +
+      'font-size:10px;font-weight:700;letter-spacing:.5px;' +
       'background:radial-gradient(circle, rgba(40,140,200,.16), rgba(40,140,200,.05));' +
-      'box-shadow:0 0 14px rgba(60,200,255,.25), inset 0 0 16px rgba(60,200,255,.12);';
+      `box-shadow:0 0 14px ${glow}, inset 0 0 16px rgba(60,200,255,.12);`;
     const set = (down: boolean) => {
       onChange(down);
       btn.style.background = down
