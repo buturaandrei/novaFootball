@@ -56,7 +56,7 @@ della milestone 5: la fase 2 li porta alla qualità "serie TV".)*
 
 ## Parte II — Roadmap tecnica (milestone 7–12)
 
-### M7 — Corpi skinned procedurali + cel-shading di base
+### M7 — Corpi skinned procedurali + cel-shading di base ✅
 - **Scheletro vero in codice** (`THREE.Skeleton` + `SkinnedMesh`, ~17 ossa: bacino,
   spina, petto, collo, testa, spalla/braccio/avambraccio/mano ×2, coscia/tibia/piede ×2).
 - Mesh unica per giocatore costruita proceduralmente (sezioni capsulari unite) con

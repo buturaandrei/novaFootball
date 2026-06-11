@@ -21,6 +21,9 @@ import {
 } from '../core/constants';
 import { dampAngle } from '../core/math';
 import { PlayerRig, type RigColors } from './PlayerRig';
+import { SkinnedPlayerRig } from './skinned/SkinnedPlayerRig';
+import { useSkinnedRig } from './rigMode';
+import type { IPlayerRig, Physique } from './RigInterface';
 
 /** Comando di movimento per un giocatore, già convertito in spazio mondo. */
 export interface PlayerCommand {
@@ -44,7 +47,7 @@ export type PlayerAction = 'normale' | 'scivolata' | 'tuffo' | 'stordito' | 'ria
  * stordimento da fallo), rig procedurale animato via codice.
  */
 export class Player {
-  readonly rig: PlayerRig;
+  readonly rig: IPlayerRig;
   readonly position = new THREE.Vector3();
   readonly velocity = new THREE.Vector3();
   facing = 0; // yaw in radianti, 0 = +z (forward = (sin, 0, cos))
@@ -73,11 +76,11 @@ export class Player {
   private wantSprint = false;
   private actionTime = 0; // tempo trascorso nell'azione corrente
 
-  constructor(name: string, team: number, role: PlayerRole, colors: RigColors) {
+  constructor(name: string, team: number, role: PlayerRole, colors: RigColors, physique?: Physique) {
     this.name = name;
     this.team = team;
     this.role = role;
-    this.rig = new PlayerRig(colors);
+    this.rig = useSkinnedRig() ? new SkinnedPlayerRig(colors, physique) : new PlayerRig(colors);
   }
 
   get object3d(): THREE.Object3D {

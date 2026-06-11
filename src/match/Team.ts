@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { HALF_LENGTH, HALF_WIDTH } from '../core/constants';
 import { Player } from '../entities/Player';
+import { PHYSIQUES } from '../entities/skinned/SkinnedPlayerRig';
 import type { RigColors } from '../entities/PlayerRig';
 import type { FluxProfileId } from '../flux/FluxProfile';
 
@@ -40,10 +41,15 @@ export class Team {
 
   constructor(config: TeamConfig, teamIndex: number) {
     this.config = config;
+    const base = PHYSIQUES[config.flux];
     for (let i = 0; i < 7; i++) {
       const role = i === 0 ? 'portiere' : 'campo';
       const colors = i === 0 ? config.gkColors : config.colors;
-      const p = new Player(config.roster[i] ?? `${config.name} ${i}`, teamIndex, role, colors);
+      // il portiere è leggermente più imponente
+      const physique = i === 0
+        ? { height: base.height * 1.03, bulk: base.bulk + 0.08 }
+        : base;
+      const p = new Player(config.roster[i] ?? `${config.name} ${i}`, teamIndex, role, colors, physique);
       this.players.push(p);
       if (role === 'campo') this.fieldPlayers.push(p);
     }

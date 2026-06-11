@@ -1,5 +1,6 @@
 import { Game, type GameConfig } from './core/Game';
 import { showMenu } from './ui/Menu';
+import { setSkinnedRig } from './entities/rigMode';
 import type { FluxProfileId } from './flux/FluxProfile';
 import type { DifficultyName } from './ai/Difficulty';
 
@@ -45,6 +46,8 @@ function parseTeam(v: string | null): FluxProfileId | null {
 
 async function boot(): Promise<void> {
   const params = new URLSearchParams(window.location.search);
+  // fallback A/B: ?rig=classico ripristina i corpi a capsule rigide
+  if (params.get('rig') === 'classico') setSkinnedRig(false);
   const demo = params.get('demo') === '1';
   const io = parseTeam(params.get('io'));
   const avversario = parseTeam(params.get('avversario'));
