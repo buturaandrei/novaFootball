@@ -1,5 +1,8 @@
 # Nova Football
 
+> 📋 Fase 2 in pianificazione: corpi 3D skinned, animazioni avanzate ed effetti
+> fedeli al linguaggio visivo della serie — vedi [ROADMAP.md](ROADMAP.md).
+
 Gioco di calcio futuristico ispirato all'estetica e al feeling di **Galactik Football**
 (omaggio, non clone: nomi e design originali). Calcio 7v7 in un'arena orbitale
 olografica sospesa nello spazio, con poteri **Flux**, regia cinematica e acrobazie aeree.
