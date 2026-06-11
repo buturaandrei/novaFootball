@@ -601,6 +601,22 @@ export class Game {
       if (frame.fluxShotPressed) {
         this.startFluxShot(0, this.activePlayer);
       }
+      // pulsante FLUX contestuale (touch): decide da solo la mossa
+      if (frame.fluxSmartPressed) {
+        const hasBall = this.ballControl.owner === this.activePlayer;
+        let done: boolean;
+        if (hasBall && this.fluxSystems[0].ready) {
+          done = this.startFluxShot(0, this.activePlayer, true);
+        } else if (hasBall) {
+          done = this.useFlux(0, 'dribble', this.activePlayer);
+        } else {
+          done = this.useFlux(0, 'sprint', this.activePlayer);
+        }
+        if (!done) {
+          this.audio.denied();
+          this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
+        }
+      }
     }
 
     // --- azioni contestuali del giocatore attivo ---

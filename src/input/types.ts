@@ -13,6 +13,8 @@ export interface RawInputState {
   fluxSprint: boolean;
   fluxDribble: boolean;
   fluxShot: boolean;
+  /** Pulsante FLUX contestuale del touch: tiro/dribbling/scatto Flux. */
+  fluxSmart: boolean;
 }
 
 export function emptyRawState(): RawInputState {
@@ -28,6 +30,7 @@ export function emptyRawState(): RawInputState {
     fluxSprint: false,
     fluxDribble: false,
     fluxShot: false,
+    fluxSmart: false,
   };
 }
 
@@ -46,6 +49,7 @@ export interface InputFrame {
   fluxSprintPressed: boolean;
   fluxDribblePressed: boolean;
   fluxShotPressed: boolean;
+  fluxSmartPressed: boolean;
 }
 
 export interface InputSource {

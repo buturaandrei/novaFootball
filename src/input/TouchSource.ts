@@ -75,31 +75,22 @@ export class TouchSource implements InputSource {
     stickZone.addEventListener('pointercancel', endStick);
 
     // --- Pulsanti (lato destro) ---
-    // Layout compatto pensato per il landscape dei telefoni (altezza
-    // utile ~330px): due file basse + CAMBIO isolato in alto a destra.
-    // Lo scatto normale è sul joystick: spingilo fino al bordo.
-    this.makeButton('TIRO', 'right:16px;bottom:16px;width:76px;height:76px;', (down) => {
+    // Schema minimale "stile The Spike": 3 azioni contestuali + salto.
+    // Lo scatto normale è sul joystick (spingilo fino al bordo);
+    // TIRO = tiro/scivolata/parata, PASSA = tap rasoterra · tieni
+    // premuto filtrante / contrasto in difesa, FLUX decide da solo
+    // (tiro Flux a barra piena, dribbling con palla, scatto senza).
+    this.makeButton('TIRO', 'right:14px;bottom:14px;width:86px;height:86px;', (down) => {
       this.state.kick = down;
     });
-    this.makeButton('PASSA', 'right:102px;bottom:16px;width:64px;height:64px;', (down) => {
-      this.state.pass = down;
-    });
-    this.makeButton('LANCIO', 'right:176px;bottom:16px;width:54px;height:54px;', (down) => {
-      this.state.lob = down;
-    });
-    this.makeButton('SALTO', 'right:16px;bottom:102px;width:64px;height:64px;', (down) => {
+    this.makePassButton('right:110px;bottom:14px;width:72px;height:72px;');
+    this.fluxShotBtn = this.makeButton('FLUX', 'right:24px;bottom:112px;width:70px;height:70px;', (down) => {
+      this.state.fluxSmart = down;
+    }, true);
+    this.fluxShotBtn.style.opacity = '0.55';
+    this.makeButton('SALTO', 'right:118px;bottom:98px;width:62px;height:62px;', (down) => {
       this.state.jump = down;
     });
-    this.makeButton('⚡SCATTO', 'right:92px;bottom:92px;width:56px;height:56px;', (down) => {
-      this.state.fluxSprint = down;
-    }, true);
-    this.makeButton('⚡DRIBLO', 'right:158px;bottom:82px;width:54px;height:54px;', (down) => {
-      this.state.fluxDribble = down;
-    }, true);
-    this.fluxShotBtn = this.makeButton('⚡TIRO', 'right:96px;bottom:162px;width:60px;height:60px;', (down) => {
-      this.state.fluxShot = down;
-    }, true);
-    this.fluxShotBtn.style.opacity = '0.25';
     this.makeButton('CAMBIO', 'right:14px;top:64px;width:46px;height:46px;', (down) => {
       this.state.switchPlayer = down;
     });
@@ -137,14 +128,41 @@ export class TouchSource implements InputSource {
     this.state.sprint = len >= this.stickRadius * 0.95;
   }
 
-  /** Il pulsante ⚡TIRO si accende solo quando la barra Flux è piena. */
+  /** Il pulsante FLUX si accende quando la barra è piena (tiro pronto). */
   setFluxShotReady(ready: boolean): void {
     if (!this.fluxShotBtn) return;
-    this.fluxShotBtn.style.opacity = ready ? '1' : '0.25';
+    this.fluxShotBtn.style.opacity = ready ? '1' : '0.55';
     this.fluxShotBtn.style.boxShadow = ready
-      ? '0 0 22px rgba(190,140,255,.9), inset 0 0 18px rgba(190,140,255,.4)'
+      ? '0 0 26px rgba(190,140,255,.95), inset 0 0 20px rgba(190,140,255,.45)'
       : '0 0 14px rgba(170,110,255,.35), inset 0 0 16px rgba(60,200,255,.12)';
   }
+
+  /**
+   * PASSA con doppia funzione: tap = passaggio rasoterra, pressione
+   * prolungata (350 ms) = filtrante alto. Gli impulsi restano attivi
+   * ~150 ms così il polling a frame li campiona anche a basso framerate.
+   */
+  private makePassButton(pos: string): void {
+    this.makeButton('PASSA', pos, (down) => {
+      const now = performance.now();
+      if (down) {
+        this.passBtnDown = true;
+        this.passDownSince = now;
+        this.passHoldFired = false;
+      } else {
+        if (this.passBtnDown && !this.passHoldFired && now - this.passDownSince < 350) {
+          this.passPulseUntil = now + 150; // tap breve → rasoterra
+        }
+        this.passBtnDown = false;
+      }
+    });
+  }
+
+  private passBtnDown = false;
+  private passDownSince = 0;
+  private passHoldFired = false;
+  private passPulseUntil = 0;
+  private lobPulseUntil = 0;
 
   private makeButton(label: string, pos: string, onChange: (down: boolean) => void, flux = false): HTMLDivElement {
     const btn = document.createElement('div');
@@ -181,6 +199,14 @@ export class TouchSource implements InputSource {
   }
 
   poll(): RawInputState {
+    const now = performance.now();
+    // pressione prolungata di PASSA → filtrante alto, subito alla soglia
+    if (this.passBtnDown && !this.passHoldFired && now - this.passDownSince >= 350) {
+      this.passHoldFired = true;
+      this.lobPulseUntil = now + 150;
+    }
+    this.state.pass = now < this.passPulseUntil;
+    this.state.lob = now < this.lobPulseUntil;
     return this.state;
   }
 }

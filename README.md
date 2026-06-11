@@ -33,18 +33,21 @@ node scripts/smoke-test.mjs
 | Azione | Tastiera | Gamepad | Touch |
 | --- | --- | --- | --- |
 | Movimento | WASD / frecce | stick sinistro | joystick virtuale (metà sinistra) |
-| Scatto | Maiusc | RB / RT | pulsante SCATTO |
-| Salto / doppio salto | Spazio | A | pulsante SALTO |
-| Tiro (carica) / scivolata in difesa | J | X | pulsante TIRO |
-| Passaggio rasoterra / contrasto in piedi | K | B | pulsante PASSA |
-| Filtrante alto | L | Y | pulsante LANCIO |
-| Scatto Flux | E | RT | pulsante ⚡SCATTO |
-| Dribbling Flux | R | LT | pulsante ⚡DRIBLO |
-| Tiro Flux (a barra piena, palla al piede) | F | R3 o LT+RT | pulsante ⚡TIRO |
-| Parata Flux (QTE durante il tiro avversario) | J | X | pulsante TIRO |
-| Cambio giocatore | Q / Tab | LB | pulsante CAMBIO |
+| Scatto | Maiusc | RB | joystick a fondo corsa |
+| Salto / doppio salto | Spazio | A | SALTO |
+| Tiro (carica) / scivolata in difesa | J | X | TIRO |
+| Passaggio rasoterra / contrasto in piedi | K | B | PASSA (tap) |
+| Filtrante alto | L | Y | PASSA (tieni premuto) |
+| Scatto Flux | E | RT | FLUX (senza palla) |
+| Dribbling Flux | R | LT | FLUX (con palla) |
+| Tiro Flux (a barra piena, palla al piede) | F | R3 o LT+RT | FLUX (con palla, barra piena: si illumina) |
+| Parata Flux (QTE durante il tiro avversario) | J | X | TIRO |
+| Cambio giocatore | Q / Tab | LB | CAMBIO |
 | Difficoltà (facile/normale/difficile) | 1 / 2 / 3 | — | — |
 | Mostra/nascondi aiuto | H | — | — |
+
+Su touch lo schema è volutamente minimale (stile "The Spike"): tre pulsanti
+contestuali (TIRO, PASSA, FLUX) + SALTO; è il contesto a decidere la mossa.
 
 Avversario alternativo (in attesa del menu della milestone 6):
 `?avversario=ruggito` nell'URL per affrontare RUGGITO invece di OMBRA.

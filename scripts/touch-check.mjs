@@ -14,7 +14,7 @@ await page.waitForTimeout(800);
 // raccogli i cerchi dei pulsanti e verifica: dentro lo schermo + nessuna sovrapposizione
 const result = await page.evaluate(() => {
   const btns = [...document.querySelectorAll('div')].filter((d) =>
-    ['TIRO','PASSA','LANCIO','SALTO','⚡SCATTO','⚡DRIBLO','CAMBIO'].includes(d.textContent) && d.style.borderRadius === '50%');
+    ['TIRO','PASSA','FLUX','SALTO','CAMBIO'].includes(d.textContent) && d.style.borderRadius === '50%');
   const circles = btns.map((b) => {
     const r = b.getBoundingClientRect();
     return { label: b.textContent, x: r.left + r.width/2, y: r.top + r.height/2, r: r.width/2, inView: r.top >= 0 && r.bottom <= innerHeight && r.left >= 0 && r.right <= innerWidth };
