@@ -39,6 +39,7 @@ node scripts/smoke-test.mjs
 | Passaggio rasoterra / contrasto in piedi | K | B | pulsante PASSA |
 | Filtrante alto | L | Y | pulsante LANCIO |
 | Cambio giocatore | Q / Tab | LB | pulsante CAMBIO |
+| Difficoltà (facile/normale/difficile) | 1 / 2 / 3 | — | — |
 | Mostra/nascondi aiuto | H | — | — |
 
 ## Stato delle milestone
@@ -69,7 +70,22 @@ node scripts/smoke-test.mjs
      (scivolata, tuffo, barcollamento)
    - Nota: i compagni di movimento tengono la posizione — l'IA tattica
      e individuale arriva con la milestone 3
-3. ⬜ IA tattica + individuale, cambio giocatore automatico, partita completa
+3. ✅ **IA tattica + individuale, cambio giocatore automatico, partita completa**
+   - IA a due livelli per entrambe le squadre: livello **tattico** (fase di
+     possesso/non possesso/palla contesa, pressing coordinato — primo uomo
+     pressa, secondo copre — marcature, smarcamenti nei mezzi spazi, tagli
+     della punta alle spalle della difesa) e livello **individuale**
+     (macchina a stati: attacca, smarcati, taglia, pressa, copri, marca,
+     insegui, rientra)
+   - Il portatore IA decide tra dribbling (con scarto del difensore),
+     passaggio (linee di passaggio valutate per progresso/smarcatezza,
+     filtrante se la linea è chiusa) e tiro a portata di specchio
+   - Cambio giocatore automatico intelligente: il controllo segue chi
+     riceve o conquista palla, mai tolto al ricevitore di un passaggio
+   - 3 livelli di difficoltà (tasti 1/2/3): reattività delle decisioni,
+     precisione di tiro/passaggio, raggio del pressing, aggressività nei
+     contrasti e propensione allo scatto — non solo la velocità
+   - I compagni dell'umano giocano sempre a livello "normale"
 4. ⬜ Sistema Flux: barra, scatto e dribbling Flux per le 3 squadre
 5. ⬜ Tiro Flux con sequenza cinematica completa, parata Flux, replay dei goal
 6. ⬜ Arena completa, pubblico, audio finale, HUD/menu, polish e bilanciamento

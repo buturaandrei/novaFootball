@@ -34,6 +34,8 @@ export interface BallControlEvents {
   onPossession?: (player: Player | null) => void;
 }
 
+const UP = new THREE.Vector3(0, 1, 0);
+
 /**
  * Possesso e controllo palla: aggancio "magnetico" leggero in dribbling,
  * tiro caricato a 3 livelli, passaggio rasoterra e filtrante alto con
@@ -283,6 +285,42 @@ export class BallControl {
     return true;
   }
 
+  /** Passaggio dell'IA verso un ricevitore esplicito, con errore di mira. */
+  passTo(passer: Player, receiver: Player, lob: boolean, errorAngle = 0): boolean {
+    if (this.owner !== passer) return false;
+    this.launchPass(passer, receiver, lob, errorAngle);
+    return true;
+  }
+
+  /**
+   * Tiro dell'IA verso un punto dello specchio: orienta il giocatore,
+   * costruisce la velocità come un tiro caricato e applica l'errore
+   * di precisione della difficoltà.
+   */
+  shootAt(player: Player, target: THREE.Vector3, charge: number, errorAngle = 0): boolean {
+    if (this.owner !== player) return false;
+    const level = charge >= 0.99 ? 3 : charge >= 0.5 ? 2 : 1;
+
+    const dir = this.tmpA.copy(target).sub(this.ball.position).setY(0).normalize();
+    if (errorAngle > 0) {
+      dir.applyAxisAngle(UP, (Math.random() - 0.5) * 2 * errorAngle);
+    }
+    player.facing = Math.atan2(dir.x, dir.z);
+
+    const power = 13 + 17 * charge;
+    const dist = this.tmpB.copy(target).sub(this.ball.position).setY(0).length();
+    const vel = this.tmpB.copy(dir).multiplyScalar(power);
+    vel.y = THREE.MathUtils.clamp(1.5 + dist * 0.12 + charge * 2.5, 1.5, 6.5);
+    vel.addScaledVector(player.velocity, 0.3);
+
+    this.ball.kick(vel, new THREE.Vector3());
+    this.setOwner(null);
+    this.cooldowns.set(player, KICK_COOLDOWN);
+    player.rig.kickPose();
+    this.events.onKick?.({ player, power: charge, level, velocity: vel.clone() });
+    return true;
+  }
+
   private choosePassTarget(passer: Player, preferDir: THREE.Vector3 | null, lob: boolean): Player | null {
     const dir = this.tmpA;
     if (preferDir && preferDir.lengthSq() > 0.09) {
@@ -313,7 +351,7 @@ export class BallControl {
     return best;
   }
 
-  private launchPass(passer: Player, receiver: Player, lob: boolean): void {
+  private launchPass(passer: Player, receiver: Player, lob: boolean, errorAngle = 0): void {
     const ball = this.ball;
     const from = ball.position;
 
@@ -328,6 +366,7 @@ export class BallControl {
       target.x += attackSign * 2.5;
       const delta = this.tmpB.copy(target).sub(from);
       const vel = this.tmpC.set(delta.x / t, GRAVITY * t * 0.5 + (0 - from.y) / t, delta.z / t);
+      if (errorAngle > 0) vel.applyAxisAngle(UP, (Math.random() - 0.5) * 2 * errorAngle);
       ball.kick(vel.clone(), new THREE.Vector3());
     } else {
       // rasoterra teso, con anticipo iterato sul tempo di volo
@@ -340,7 +379,9 @@ export class BallControl {
       dist = delta.length();
       speed = THREE.MathUtils.clamp(10 + dist * 0.6, PASS_MIN_SPEED, PASS_MAX_SPEED);
       const vel = delta.normalize().multiplyScalar(speed);
-      ball.kick(new THREE.Vector3(vel.x, 0.6, vel.z), new THREE.Vector3());
+      const v3 = new THREE.Vector3(vel.x, 0.6, vel.z);
+      if (errorAngle > 0) v3.applyAxisAngle(UP, (Math.random() - 0.5) * 2 * errorAngle);
+      ball.kick(v3, new THREE.Vector3());
     }
 
     this.setOwner(null);

@@ -94,7 +94,7 @@ export class Hud {
     this.helpEl.innerHTML =
       '<b>WASD</b> muovi · <b>MAIUSC</b> scatto · <b>SPAZIO</b> salto ·' +
       ' <b>J</b> tiro / scivolata · <b>K</b> passaggio / contrasto ·' +
-      ' <b>L</b> filtrante · <b>Q</b> cambio · <b>H</b> nascondi';
+      ' <b>L</b> filtrante · <b>Q</b> cambio · <b>1/2/3</b> difficoltà · <b>H</b> nascondi';
     this.helpEl.style.cssText =
       'position:absolute;right:18px;bottom:20px;font-size:12px;opacity:.75;letter-spacing:.5px;' +
       'padding:6px 12px;background:rgba(6,20,34,.6);border:1px solid rgba(80,220,255,.3);border-radius:5px;';

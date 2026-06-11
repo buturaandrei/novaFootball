@@ -75,6 +75,66 @@ try {
 }
 await page.screenshot({ path: '/tmp/shot-pass.png' });
 
+// --- IA: pressing coordinato quando l'avversario ha palla ---
+try {
+  await page.waitForFunction(
+    () => {
+      const g = window.__nova;
+      if (!g.ballControl.owner || g.ballControl.owner.team !== 1) {
+        g.ballControl.givePossession(g.teams[1].fieldPlayers[3]);
+        return false;
+      }
+      const carrier = g.ballControl.owner;
+      let min = 1e9;
+      for (const p of g.teams[0].fieldPlayers) {
+        if (p === g.activePlayer) continue;
+        min = Math.min(min, p.position.distanceTo(carrier.position));
+      }
+      return min < 4;
+    },
+    { timeout: 90000, polling: 500 },
+  );
+  check('IA: pressing sul portatore avversario', true);
+} catch {
+  check('IA: pressing sul portatore avversario', false);
+}
+
+// --- IA: OMBRA costruisce l'attacco verso la porta GELO ---
+// situazione pulita (kickoff), palla a un centrocampista OMBRA, nessun
+// intervento: la manovra deve far avanzare la palla di 8 m (o concludere)
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.setDifficulty('difficile');
+  g.match.kickoff();
+  g.ballControl.givePossession(g.teams[1].fieldPlayers[3]);
+  window.__probeX0 = g.ball.position.x;
+});
+try {
+  await page.waitForFunction(
+    () => {
+      const g = window.__nova;
+      return (
+        g.ball.position.x < window.__probeX0 - 8 ||
+        g.match.score[1] > 0 ||
+        g.ballControl.heldBy === g.teams[0].goalkeeper
+      );
+    },
+    { timeout: 120000, polling: 400 },
+  );
+  check('IA: OMBRA costruisce e avanza verso la porta GELO', true);
+} catch {
+  check('IA: OMBRA costruisce e avanza verso la porta GELO', false);
+}
+await page.screenshot({ path: '/tmp/shot-ai.png' });
+
+// --- difficoltà selezionabile ---
+const diffOk = await page.evaluate(() => {
+  window.__nova.setDifficulty('difficile');
+  return window.__nova.difficulty === 'difficile';
+});
+check('difficoltà cambiata a DIFFICILE', diffOk);
+await page.evaluate(() => window.__nova.setDifficulty('normale'));
+
 // --- parata del portiere: tiro centrale parabile ---
 const saveResult = await page.evaluate(() => {
   const g = window.__nova;

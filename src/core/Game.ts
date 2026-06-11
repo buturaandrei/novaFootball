@@ -8,7 +8,9 @@ import { Arena } from '../arena/Arena';
 import { AudioSystem } from '../audio/AudioSystem';
 import { CameraDirector, CameraState } from '../camera/CameraDirector';
 import { Goalkeeper } from '../ai/Goalkeeper';
-import { Player } from '../entities/Player';
+import { TeamAI } from '../ai/TeamAI';
+import { DIFFICULTIES, type DifficultyName } from '../ai/Difficulty';
+import { Player, type PlayerCommand } from '../entities/Player';
 import { InputSystem } from '../input/InputSystem';
 import { BallControl } from '../match/BallControl';
 import { Match } from '../match/Match';
@@ -47,6 +49,8 @@ export class Game {
   readonly match: Match;
   private tackles: Tackles;
   private goalkeepers: Goalkeeper[];
+  private teamAIs: TeamAI[];
+  difficulty: DifficultyName = 'normale';
   private audio = new AudioSystem();
   private particles = new ParticlePool(768);
   private chargeRing = new ChargeRing();
@@ -142,6 +146,31 @@ export class Game {
     this.goalkeepers = this.teams.map(
       (team) => new Goalkeeper(team.goalkeeper, team, this.ball, this.ballControl),
     );
+    // IA a due livelli per entrambe le squadre: i compagni dell'umano
+    // giocano sempre a livello "normale", l'avversario segue la difficoltà
+    this.teamAIs = [
+      new TeamAI(
+        this.teams[0], this.teams[1], this.ball, this.ballControl, this.tackles,
+        () => DIFFICULTIES.normale,
+        (p) => p === this.activePlayerRef,
+      ),
+      new TeamAI(
+        this.teams[1], this.teams[0], this.ball, this.ballControl, this.tackles,
+        () => DIFFICULTIES[this.difficulty],
+        () => false,
+      ),
+    ];
+
+    // difficoltà al volo con 1/2/3
+    window.addEventListener('keydown', (e) => {
+      const map: Record<string, DifficultyName> = {
+        Digit1: 'facile',
+        Digit2: 'normale',
+        Digit3: 'difficile',
+      };
+      const d = map[e.code];
+      if (d) this.setDifficulty(d);
+    });
 
     this.hud = new Hud(container, () => {
       this.audio.unlock();
@@ -215,6 +244,12 @@ export class Game {
       if (info.passer.team === 0 && info.receiver.team === 0 && info.receiver.role === 'campo') {
         this.setActivePlayer(info.receiver);
       }
+    };
+
+    // cambio automatico intelligente: quando un compagno conquista palla,
+    // il controllo passa a lui
+    this.ballControl.events.onPossession = (p) => {
+      if (p && p.team === 0 && p.role === 'campo') this.setActivePlayer(p);
     };
 
     // contrasti → audio e falli
@@ -308,6 +343,12 @@ export class Game {
     return this.activePlayerRef;
   }
 
+  setDifficulty(d: DifficultyName): void {
+    if (this.difficulty === d) return;
+    this.difficulty = d;
+    this.hud.showMessage(`DIFFICOLTÀ: ${DIFFICULTIES[d].label}`, 1.4);
+  }
+
   private setActivePlayer(p: Player | null): void {
     if (!p || p.team !== 0 || p.role !== 'campo') return;
     this.activePlayerRef = p;
@@ -386,14 +427,22 @@ export class Game {
       }
     }
 
+    // --- IA di squadra (tattica + individuale) ---
+    if (phase === 'playing' && this.started) {
+      for (const ai of this.teamAIs) ai.update(dt);
+    }
+
     // --- aggiornamento giocatori ---
     const activeNow = this.activePlayer; // può essere cambiato dalle azioni sopra
-    for (const team of this.teams) {
-      for (const p of team.players) {
+    for (let ti = 0; ti < this.teams.length; ti++) {
+      for (const p of this.teams[ti].players) {
         if (p.role === 'portiere') continue; // gestiti dai controller
-        const cmd = playing && p === activeNow
-          ? { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed }
-          : null;
+        let cmd: PlayerCommand | null = null;
+        if (playing && p === activeNow) {
+          cmd = { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed };
+        } else if (phase === 'playing' && this.started) {
+          cmd = this.teamAIs[ti].getCommand(p);
+        }
         p.update(dt, cmd);
         p.rig.setGlow(p === activeNow ? 2.6 : 1.2);
       }
