@@ -66,6 +66,7 @@ export class TouchSource implements InputSource {
       this.stickPointerId = null;
       this.state.moveX = 0;
       this.state.moveY = 0;
+      this.state.sprint = false;
       this.stickBase.style.display = 'none';
       this.stickKnob.style.display = 'none';
     };
@@ -73,30 +74,30 @@ export class TouchSource implements InputSource {
     stickZone.addEventListener('pointercancel', endStick);
 
     // --- Pulsanti (lato destro) ---
-    this.makeButton('TIRO', 'right:24px;bottom:104px;width:84px;height:84px;', (down) => {
+    // Layout compatto pensato per il landscape dei telefoni (altezza
+    // utile ~330px): due file basse + CAMBIO isolato in alto a destra.
+    // Lo scatto normale è sul joystick: spingilo fino al bordo.
+    this.makeButton('TIRO', 'right:16px;bottom:16px;width:76px;height:76px;', (down) => {
       this.state.kick = down;
     });
-    this.makeButton('PASSA', 'right:116px;bottom:52px;width:74px;height:74px;', (down) => {
+    this.makeButton('PASSA', 'right:102px;bottom:16px;width:64px;height:64px;', (down) => {
       this.state.pass = down;
     });
-    this.makeButton('LANCIO', 'right:122px;bottom:148px;width:60px;height:60px;', (down) => {
+    this.makeButton('LANCIO', 'right:176px;bottom:16px;width:54px;height:54px;', (down) => {
       this.state.lob = down;
     });
-    this.makeButton('SALTO', 'right:34px;bottom:208px;width:66px;height:66px;', (down) => {
+    this.makeButton('SALTO', 'right:16px;bottom:102px;width:64px;height:64px;', (down) => {
       this.state.jump = down;
     });
-    this.makeButton('SCATTO', 'right:206px;bottom:36px;width:62px;height:62px;', (down) => {
-      this.state.sprint = down;
-    });
-    this.makeButton('CAMBIO', 'right:208px;bottom:122px;width:52px;height:52px;', (down) => {
-      this.state.switchPlayer = down;
-    });
-    this.makeButton('⚡SCATTO', 'right:108px;bottom:238px;width:58px;height:58px;', (down) => {
+    this.makeButton('⚡SCATTO', 'right:92px;bottom:92px;width:56px;height:56px;', (down) => {
       this.state.fluxSprint = down;
     }, true);
-    this.makeButton('⚡DRIBLO', 'right:188px;bottom:200px;width:58px;height:58px;', (down) => {
+    this.makeButton('⚡DRIBLO', 'right:158px;bottom:82px;width:54px;height:54px;', (down) => {
       this.state.fluxDribble = down;
     }, true);
+    this.makeButton('CAMBIO', 'right:14px;top:64px;width:46px;height:46px;', (down) => {
+      this.state.switchPlayer = down;
+    });
 
     // Mostra i controlli su dispositivi touch, o al primo tocco su ibridi.
     if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
@@ -127,6 +128,8 @@ export class TouchSource implements InputSource {
     this.stickKnob.style.top = `${this.stickOrigin.y + dy}px`;
     this.state.moveX = dx / this.stickRadius;
     this.state.moveY = -dy / this.stickRadius;
+    // scatto integrato nel joystick: spinta a fondo corsa = corsa
+    this.state.sprint = len >= this.stickRadius * 0.95;
   }
 
   private makeButton(label: string, pos: string, onChange: (down: boolean) => void, flux = false): void {
@@ -148,6 +151,12 @@ export class TouchSource implements InputSource {
         : 'radial-gradient(circle, rgba(40,140,200,.16), rgba(40,140,200,.05))';
     };
     btn.addEventListener('pointerdown', (e) => {
+      // i pulsanti sono cerchi ma il DOM ha aree quadrate: gli angoli
+      // invisibili non devono rubare il tocco al pulsante accanto
+      const r = btn.getBoundingClientRect();
+      const dx = e.clientX - (r.left + r.width / 2);
+      const dy = e.clientY - (r.top + r.height / 2);
+      if (Math.hypot(dx, dy) > r.width / 2 + 8) return;
       btn.setPointerCapture(e.pointerId);
       set(true);
     });

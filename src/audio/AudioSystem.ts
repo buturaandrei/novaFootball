@@ -285,6 +285,23 @@ export class AudioSystem {
     }
   }
 
+  /** Blip negativo: azione Flux non disponibile. */
+  denied(): void {
+    if (!this.ctx || !this.master) return;
+    const ctx = this.ctx;
+    const t = ctx.currentTime;
+    const osc = ctx.createOscillator();
+    osc.type = 'square';
+    osc.frequency.setValueAtTime(220, t);
+    osc.frequency.setValueAtTime(165, t + 0.07);
+    const g = ctx.createGain();
+    g.gain.setValueAtTime(0.08, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.15);
+    osc.connect(g).connect(this.master);
+    osc.start(t);
+    osc.stop(t + 0.16);
+  }
+
   /** Campanellino: la barra Flux è piena (PRONTO). */
   fluxReady(): void {
     if (!this.ctx || !this.master) return;

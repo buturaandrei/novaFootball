@@ -19,7 +19,7 @@ export interface FluxEvents {
  * (scatto, dribbling e — dalla milestone 5 — il tiro che la consuma tutta).
  */
 export class FluxSystem {
-  value = 25; // si parte con un po' di energia
+  value = 50; // si parte con energia sufficiente per una mossa
   events: FluxEvents = {};
   private wasReady = false;
 
@@ -72,7 +72,7 @@ export class FluxSystem {
   }
 
   reset(): void {
-    this.value = 25;
+    this.value = 50;
     this.wasReady = false;
   }
 }

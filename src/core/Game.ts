@@ -476,10 +476,17 @@ export class Game {
       this.hud.showMessage('SI RICOMINCIA!', 1.6);
     }
 
-    // mosse Flux del giocatore (scatto E / dribbling R)
+    // mosse Flux del giocatore (scatto E / dribbling R), con feedback
+    // chiaro quando l'energia non basta
     if (phase === 'playing' && this.started) {
-      if (frame.fluxSprintPressed) this.useFlux(0, 'sprint', this.activePlayer);
-      if (frame.fluxDribblePressed) this.useFlux(0, 'dribble', this.activePlayer);
+      if (frame.fluxSprintPressed && !this.useFlux(0, 'sprint', this.activePlayer)) {
+        this.audio.denied();
+        this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
+      }
+      if (frame.fluxDribblePressed && !this.useFlux(0, 'dribble', this.activePlayer)) {
+        this.audio.denied();
+        this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
+      }
     }
 
     // --- azioni contestuali del giocatore attivo ---

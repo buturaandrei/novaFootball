@@ -53,26 +53,36 @@ await page.keyboard.up('ShiftLeft');
 await page.keyboard.up('KeyD');
 
 // --- passaggio rasoterra: possesso a un compagno, palla in movimento ---
-const passOk = await page.evaluate(() => {
-  const g = window.__nova;
-  const passer = g.teams[0].fieldPlayers[0];
-  g.ballControl.givePossession(passer);
-  const ok = g.ballControl.pass(passer, null, false);
-  return ok && g.ball.velocity.length() > 8;
-});
-check('passaggio rasoterra eseguito', passOk);
-try {
-  await page.waitForFunction(
-    () => {
-      const g = window.__nova;
-      return g.ballControl.owner && g.ballControl.owner.team === 0;
-    },
-    { timeout: 20000 },
-  );
-  check('il compagno riceve il passaggio', true);
-} catch {
-  check('il compagno riceve il passaggio', false);
+// l'IA avversaria può intercettare legittimamente: fino a 3 tentativi
+// da situazione pulita di kickoff
+let passLaunched = false;
+let passReceived = false;
+for (let attempt = 0; attempt < 3 && !passReceived; attempt++) {
+  passLaunched = await page.evaluate(() => {
+    const g = window.__nova;
+    g.match.kickoff();
+    const passer = g.teams[0].fieldPlayers[3];
+    g.ballControl.givePossession(passer);
+    window.__passer = passer;
+    const ok = g.ballControl.pass(passer, null, false);
+    return ok && g.ball.velocity.length() > 8;
+  });
+  if (!passLaunched) continue;
+  try {
+    await page.waitForFunction(
+      () => {
+        const g = window.__nova;
+        return g.ballControl.owner && g.ballControl.owner.team === 0 && g.ballControl.owner !== window.__passer;
+      },
+      { timeout: 25000 },
+    );
+    passReceived = true;
+  } catch {
+    passReceived = false;
+  }
 }
+check('passaggio rasoterra eseguito', passLaunched);
+check('il compagno riceve il passaggio', passReceived);
 await page.screenshot({ path: '/tmp/shot-pass.png' });
 
 // --- IA: pressing coordinato quando l'avversario ha palla ---
