@@ -21,7 +21,7 @@ import { ChargeRing } from '../vfx/ChargeRing';
 import { ParticlePool } from '../vfx/ParticlePool';
 import { Hud } from '../ui/Hud';
 import { Time } from './Time';
-import { PLAYER_RADIUS } from './constants';
+import { HALF_LENGTH, PLAYER_RADIUS } from './constants';
 
 /**
  * Cuore del gioco: collega input, fisica, regia, vfx, audio, match e HUD.
@@ -419,11 +419,24 @@ export class Game {
       }
     }
 
-    // punizione dell'avversario: batte da solo dopo una pausa
+    // punizione dell'avversario: batte da solo dopo una pausa, con
+    // fallback garantito (mai lasciare la partita bloccata)
     if (phase === 'freeKick' && this.opponentFreeKickTimer > 0) {
       this.opponentFreeKickTimer -= dt;
       if (this.opponentFreeKickTimer <= 0 && this.match.freeKickTaker) {
-        this.ballControl.pass(this.match.freeKickTaker, null, false);
+        const taker = this.match.freeKickTaker;
+        if (this.ballControl.owner !== taker) this.ballControl.givePossession(taker);
+        if (!this.ballControl.pass(taker, null, false)) {
+          // nessun compagno "davanti": scarico al più vicino in qualunque
+          // direzione, o spazzata verso la metà campo avversaria
+          const mates = this.teams[taker.team].fieldPlayers
+            .filter((p) => p !== taker && p.action === 'normale')
+            .sort((a, b) => a.position.distanceTo(taker.position) - b.position.distanceTo(taker.position));
+          if (!(mates[0] && this.ballControl.passTo(taker, mates[0], false))) {
+            const goalX = -this.teams[taker.team].defendsSide * HALF_LENGTH;
+            this.ballControl.shootAt(taker, new THREE.Vector3(goalX, 1, 0), 0.6, 0.15);
+          }
+        }
       }
     }
 

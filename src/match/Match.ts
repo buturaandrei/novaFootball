@@ -38,6 +38,7 @@ export class Match {
 
   private phaseTimer = 0;
   private kickoffTeam = 0;
+  private freeKickElapsed = 0;
 
   constructor(
     private ball: Ball,
@@ -81,6 +82,7 @@ export class Match {
 
   /** Sistemazione della punizione: palla sul punto, avversari a distanza. */
   private setupFreeKick(): void {
+    this.freeKickElapsed = 0;
     const spot = this.pendingSpot;
     this.ball.reset(spot.x, spot.z);
 
@@ -177,6 +179,14 @@ export class Match {
         if (this.phaseTimer > 0) {
           this.phaseTimer -= dt;
           if (this.phaseTimer <= 0) this.setupFreeKick();
+        } else {
+          // watchdog: una punizione non può bloccare la partita
+          this.freeKickElapsed += dt;
+          if (this.freeKickElapsed > 6) {
+            this.phase = 'playing';
+            this.freeKickTaker = null;
+            this.freeKickTeam = -1;
+          }
         }
         break;
       }

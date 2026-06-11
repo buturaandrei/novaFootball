@@ -104,6 +104,12 @@ export class Hud {
         this.helpEl.style.display = this.helpEl.style.display === 'none' ? 'block' : 'none';
       }
     });
+    // su touch lo schema dei tasti è inutile e ruba spazio ai pulsanti
+    if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {
+      this.helpEl.style.display = 'none';
+    } else {
+      window.addEventListener('touchstart', () => (this.helpEl.style.display = 'none'), { once: true });
+    }
 
     // overlay iniziale: serve un gesto per sbloccare l'audio
     this.overlayEl = document.createElement('div');
