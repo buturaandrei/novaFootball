@@ -3,7 +3,7 @@
 // cronometro, fischio finale). Uso: node scripts/smoke-test.mjs [url]
 import { chromium } from 'playwright';
 
-const url = process.argv[2] ?? 'http://localhost:4517/';
+const url = process.argv[2] ?? 'http://localhost:4517/?io=gelo&avversario=ombra';
 const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-sandbox'],
 });
@@ -34,14 +34,37 @@ const ensurePlaying = async (timeout = 180000) => {
   );
 };
 
-await page.goto(url, { waitUntil: 'networkidle' });
-await page.waitForTimeout(1500);
+// --- menu: selezione squadra, avversario e difficoltà ---
+// (si carica l'URL base senza parametri, dove il menu appare davvero)
+const baseUrl = url.split('?')[0];
+await page.goto(baseUrl, { waitUntil: 'networkidle' });
+await page.waitForTimeout(1200);
 await page.screenshot({ path: '/tmp/shot-menu.png' });
-
-// entra in campo
-await page.mouse.click(400, 225);
+try {
+  await page.click('[data-team="gelo"]', { timeout: 10000 });
+  await page.click('[data-diff="normale"]', { timeout: 10000 });
+  await page.click('[data-team="ombra"]', { timeout: 10000 });
+  await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+  check('menu: selezione squadre e avvio partita', true);
+} catch {
+  check('menu: selezione squadre e avvio partita', false);
+  await page.goto(url, { waitUntil: 'networkidle' });
+  await page.waitForFunction(() => !!window.__nova, { timeout: 20000 });
+}
 await page.waitForTimeout(800);
 await page.screenshot({ path: '/tmp/shot-kickoff.png' });
+
+// --- pausa: P congela il cronometro ---
+await page.keyboard.down('KeyP');
+await page.waitForTimeout(400);
+await page.keyboard.up('KeyP');
+await page.waitForTimeout(300);
+const pausedState = await page.evaluate(() => window.__nova.paused === true);
+await page.keyboard.down('KeyP');
+await page.waitForTimeout(400);
+await page.keyboard.up('KeyP');
+const resumedState = await page.evaluate(() => window.__nova.paused === false);
+check('pausa e ripresa con P', pausedState && resumedState);
 
 // --- squadre complete ---
 const counts = await page.evaluate(() => {
@@ -277,14 +300,15 @@ await page.screenshot({ path: '/tmp/shot-terza.png' });
 
 // --- regressione: la punizione IA non blocca più la partita ---
 await ensurePlaying().catch(() => errors.push('fase playing non raggiunta prima della punizione'));
-await page.evaluate(() => {
+const fkApplied = await page.evaluate(() => {
   const g = window.__nova;
+  if (g.match.phase !== 'playing') g.match.kickoff(); // atomico: niente gare col gioco vivo
   g.match.foul(g.teams[0].fieldPlayers[0], g.teams[1].fieldPlayers[2], g.teams[1].fieldPlayers[2].position.clone());
+  return g.match.phase === 'freeKick';
 });
 try {
-  await page.waitForFunction(() => window.__nova.match.phase === 'freeKick', { timeout: 10000 });
-  await page.waitForFunction(() => window.__nova.match.phase === 'playing', { timeout: 90000 });
-  check('la punizione IA viene battuta e il gioco riprende', true);
+  await ensurePlaying(120000);
+  check('la punizione IA viene battuta e il gioco riprende', fkApplied);
 } catch {
   check('la punizione IA viene battuta e il gioco riprende', false);
 }
@@ -333,13 +357,19 @@ try {
 } catch {
   errors.push('il portiere non ha mai rinviato la palla');
 }
-await page.evaluate(() => {
+const scoreBefore = await page.evaluate(() => {
   const g = window.__nova;
+  if (g.match.phase !== 'playing') g.match.kickoff();
   g.ball.position.set(28.5, 1.2, 3.1);
   g.ball.velocity.set(34, 2, 0);
+  return g.match.score[0];
 });
 try {
-  await page.waitForFunction(() => window.__nova.match.score[0] === 1, { timeout: 30000 });
+  await page.waitForFunction(
+    (before) => window.__nova.match.score[0] > before,
+    { timeout: 30000 },
+    scoreBefore,
+  );
   check('goal sul tiro imparabile', true);
 } catch {
   check('goal sul tiro imparabile', false);

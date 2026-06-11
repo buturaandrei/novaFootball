@@ -136,4 +136,18 @@ Avversario alternativo (in attesa del menu della milestone 6):
      laterale bassa) con slow-motion extra sull'impatto
    - Coreografie corporee distinte per le mosse Flux: piroetta (GELO),
      spallata (RUGGITO), sparizione vera (OMBRA), windup e strike del tiro
-6. ⬜ Arena completa, pubblico, audio finale, HUD/menu, polish e bilanciamento
+6. ✅ **Arena completa, pubblico, audio, HUD finale, menu, polish e bilanciamento**
+   - Pubblico instanced (~4000 spettatori in un draw call) che ondeggia e
+     si alza a esultare sui goal; navette che passano nello skybox;
+     tabellone olografico fluttuante con punteggio e tempo (CanvasTexture
+     procedurale); coni di luce volumetrici sui riflettori
+   - Menu olografico: selezione della tua squadra, dell'avversario e della
+     difficoltà (le 3 squadre con Flux diversi); scorciatoia via URL
+     `?io=gelo&avversario=ruggito&difficolta=difficile`; `?demo=1` per la
+     partita automatica IA vs IA
+   - Pausa (P / pulsante ⏸) con schema comandi completo; pannello risultato
+     con RIGIOCA / TORNA AL MENU; radar minimappa nell'HUD
+   - Bilanciamento misurato con partite demo automatiche
+     (`scripts/balance-test.mjs`): l'IA ora risparmia il Flux oltre il 62%
+     della barra per arrivare al tiro Flux; ritmo partita nel target
+     (3–6 goal, ≥2 momenti Flux per tempo)

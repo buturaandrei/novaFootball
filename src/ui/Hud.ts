@@ -28,14 +28,19 @@ export class Hud {
   private messageEl: HTMLDivElement;
   private fpsEl: HTMLDivElement;
   private helpEl: HTMLDivElement;
-  private overlayEl: HTMLDivElement | null;
 
+  private radar: HTMLCanvasElement;
+  private radarCtx: CanvasRenderingContext2D;
+  private pauseOverlay: HTMLDivElement;
+  private resultPanel: HTMLDivElement;
   private messageTimer = 0;
   private fpsAccum = 0;
   private fpsFrames = 0;
   private fpsTimer = 0;
+  /** Richiesta di pausa dal pulsante ⏸ (impostata dal Game). */
+  onPauseRequest: (() => void) | null = null;
 
-  constructor(parent: HTMLElement, onStart: () => void) {
+  constructor(parent: HTMLElement) {
     this.root = document.createElement('div');
     this.root.style.cssText =
       'position:fixed;inset:0;pointer-events:none;z-index:30;color:#cdf3ff;' +
@@ -157,38 +162,134 @@ export class Hud {
       window.addEventListener('touchstart', () => (this.helpEl.style.display = 'none'), { once: true });
     }
 
-    // overlay iniziale: serve un gesto per sbloccare l'audio
-    this.overlayEl = document.createElement('div');
-    this.overlayEl.style.cssText =
-      'position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;gap:18px;' +
-      'align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;' +
-      'background:radial-gradient(ellipse at center, rgba(4,18,32,.88), rgba(2,8,18,.96));';
-    const title = document.createElement('div');
-    title.textContent = 'NOVA FOOTBALL';
-    title.style.cssText =
-      'font-size:54px;font-weight:900;letter-spacing:10px;transform:skewX(-8deg);color:#eaffff;' +
-      'text-shadow:0 0 22px rgba(110,230,255,1),0 0 60px rgba(60,180,255,.9);';
-    const subtitle = document.createElement('div');
-    subtitle.textContent = 'ARENA ORBITALE · MILESTONE 1';
-    subtitle.style.cssText = 'font-size:14px;letter-spacing:6px;opacity:.8;';
-    const prompt = document.createElement('div');
-    prompt.textContent = 'TOCCA O PREMI UN TASTO PER ENTRARE IN CAMPO';
-    prompt.style.cssText =
-      'margin-top:26px;font-size:16px;letter-spacing:3px;animation:novaPulse 1.6s ease-in-out infinite;';
     const style = document.createElement('style');
     style.textContent = '@keyframes novaPulse{0%,100%{opacity:.45}50%{opacity:1}}';
     document.head.appendChild(style);
-    this.overlayEl.append(title, subtitle, prompt);
-    parent.appendChild(this.overlayEl);
 
-    const start = () => {
-      if (!this.overlayEl) return;
-      this.overlayEl.remove();
-      this.overlayEl = null;
-      onStart();
-    };
-    this.overlayEl.addEventListener('pointerdown', start);
-    window.addEventListener('keydown', start, { once: false });
+    // radar minimappa (proporzioni campo 62:38)
+    this.radar = document.createElement('canvas');
+    this.radar.width = 150;
+    this.radar.height = 92;
+    this.radar.style.cssText =
+      'position:absolute;left:50%;bottom:18px;transform:translateX(-50%);width:150px;height:92px;' +
+      'border:1px solid rgba(80,220,255,.4);border-radius:6px;background:rgba(6,18,30,.55);' +
+      'box-shadow:0 0 12px rgba(60,200,255,.2);';
+    this.radarCtx = this.radar.getContext('2d')!;
+    this.root.appendChild(this.radar);
+
+    // pulsante pausa
+    const pauseBtn = document.createElement('div');
+    pauseBtn.textContent = '⏸';
+    pauseBtn.style.cssText =
+      'position:absolute;top:12px;left:16px;width:38px;height:38px;border-radius:50%;' +
+      'display:flex;align-items:center;justify-content:center;pointer-events:auto;cursor:pointer;' +
+      'border:1px solid rgba(80,220,255,.5);background:rgba(8,24,40,.7);font-size:16px;';
+    pauseBtn.addEventListener('pointerdown', () => this.onPauseRequest?.());
+    this.root.appendChild(pauseBtn);
+
+    // overlay di pausa con schema comandi
+    this.pauseOverlay = document.createElement('div');
+    this.pauseOverlay.style.cssText =
+      'position:fixed;inset:0;z-index:55;display:none;flex-direction:column;gap:16px;' +
+      'align-items:center;justify-content:center;pointer-events:auto;' +
+      'background:rgba(2,8,18,.88);color:#cdf3ff;text-align:center;padding:16px;';
+    const pTitle = document.createElement('div');
+    pTitle.textContent = 'PAUSA';
+    pTitle.style.cssText =
+      'font-size:42px;font-weight:900;letter-spacing:8px;transform:skewX(-8deg);color:#eaffff;' +
+      'text-shadow:0 0 18px rgba(110,230,255,1);';
+    const pHelp = document.createElement('div');
+    pHelp.style.cssText = 'font-size:13px;line-height:2;opacity:.85;max-width:600px;';
+    pHelp.innerHTML =
+      '<b>WASD</b> muovi · <b>MAIUSC</b> scatto · <b>SPAZIO</b> salto/doppio salto<br>' +
+      '<b>J</b> tiro / scivolata · <b>K</b> passaggio / contrasto · <b>L</b> filtrante alto<br>' +
+      '<b>E</b> scatto Flux · <b>R</b> dribbling Flux · <b>F</b> tiro Flux (barra piena)<br>' +
+      '<b>Q</b> cambio giocatore · <b>C</b> visuale · <b>1/2/3</b> difficoltà · <b>P</b> pausa<br>' +
+      '<span style="opacity:.7">Touch: TIRO · PASSA (tieni premuto = filtrante) · FLUX contestuale · SALTO<br>' +
+      'joystick a fondo corsa = scatto</span>';
+    const pResume = document.createElement('div');
+    pResume.textContent = 'RIPRENDI';
+    pResume.style.cssText =
+      'padding:10px 28px;border-radius:8px;cursor:pointer;font-weight:800;letter-spacing:3px;' +
+      'border:2px solid rgba(80,220,255,.7);background:rgba(70,200,255,.2);';
+    pResume.addEventListener('pointerdown', () => this.onPauseRequest?.());
+    const pMenu = document.createElement('div');
+    pMenu.textContent = 'TORNA AL MENU';
+    pMenu.style.cssText =
+      'padding:8px 20px;border-radius:8px;cursor:pointer;font-size:12px;letter-spacing:2px;' +
+      'border:1px solid rgba(80,220,255,.4);background:rgba(8,24,40,.7);';
+    pMenu.addEventListener('pointerdown', () => window.location.reload());
+    this.pauseOverlay.append(pTitle, pHelp, pResume, pMenu);
+    parent.appendChild(this.pauseOverlay);
+
+    // pannello risultato a fine partita
+    this.resultPanel = document.createElement('div');
+    this.resultPanel.style.cssText =
+      'position:fixed;left:50%;top:55%;transform:translate(-50%,-50%);z-index:54;display:none;' +
+      'flex-direction:column;gap:14px;align-items:center;pointer-events:auto;' +
+      'padding:22px 34px;border-radius:12px;border:1px solid rgba(80,220,255,.5);' +
+      'background:rgba(4,16,28,.92);box-shadow:0 0 30px rgba(60,200,255,.3);color:#cdf3ff;';
+    parent.appendChild(this.resultPanel);
+  }
+
+  /** Mostra/nasconde l'overlay di pausa. */
+  setPauseVisible(on: boolean): void {
+    this.pauseOverlay.style.display = on ? 'flex' : 'none';
+  }
+
+  /** Pannello di fine partita con RIGIOCA / MENU. */
+  showResult(text: string, onReplay: () => void): void {
+    this.resultPanel.replaceChildren();
+    const t = document.createElement('div');
+    t.textContent = text;
+    t.style.cssText =
+      'font-size:26px;font-weight:900;letter-spacing:3px;text-shadow:0 0 14px rgba(110,230,255,.9);';
+    const again = document.createElement('div');
+    again.textContent = 'RIGIOCA';
+    again.style.cssText =
+      'padding:10px 28px;border-radius:8px;cursor:pointer;font-weight:800;letter-spacing:3px;' +
+      'border:2px solid rgba(80,220,255,.7);background:rgba(70,200,255,.2);';
+    again.addEventListener('pointerdown', () => onReplay());
+    const menu = document.createElement('div');
+    menu.textContent = 'TORNA AL MENU';
+    menu.style.cssText =
+      'padding:8px 20px;border-radius:8px;cursor:pointer;font-size:12px;letter-spacing:2px;' +
+      'border:1px solid rgba(80,220,255,.4);background:rgba(8,24,40,.7);';
+    menu.addEventListener('pointerdown', () => window.location.reload());
+    this.resultPanel.append(t, again, menu);
+    this.resultPanel.style.display = 'flex';
+  }
+
+  hideResult(): void {
+    this.resultPanel.style.display = 'none';
+  }
+
+  /** Radar minimappa: campo, giocatori (colori squadra) e palla. */
+  updateRadar(
+    players: { x: number; z: number; team: number }[],
+    ball: { x: number; z: number },
+    colors: [string, string],
+  ): void {
+    const c = this.radarCtx;
+    const w = this.radar.width;
+    const h = this.radar.height;
+    c.clearRect(0, 0, w, h);
+    c.strokeStyle = 'rgba(90,220,255,.5)';
+    c.strokeRect(3, 3, w - 6, h - 6);
+    c.beginPath();
+    c.moveTo(w / 2, 3);
+    c.lineTo(w / 2, h - 3);
+    c.stroke();
+    const px = (x: number) => ((x + 31) / 62) * (w - 10) + 5;
+    const pz = (z: number) => ((z + 19) / 38) * (h - 10) + 5;
+    for (const p of players) {
+      c.fillStyle = colors[p.team];
+      c.fillRect(px(p.x) - 1.7, pz(p.z) - 1.7, 3.4, 3.4);
+    }
+    c.fillStyle = '#ffffff';
+    c.beginPath();
+    c.arc(px(ball.x), pz(ball.z), 2.4, 0, Math.PI * 2);
+    c.fill();
   }
 
   setScore(match: Match): void {

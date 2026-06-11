@@ -7,7 +7,7 @@ const ctx = await browser.newContext({
 const page = await ctx.newPage();
 const errors = [];
 page.on('pageerror', (e) => errors.push(String(e)));
-await page.goto('http://localhost:4517/', { waitUntil: 'networkidle' });
+await page.goto('http://localhost:4517/?io=gelo&avversario=ombra', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1200);
 await page.touchscreen.tap(370, 180);
 await page.waitForTimeout(800);

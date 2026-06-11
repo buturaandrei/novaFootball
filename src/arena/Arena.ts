@@ -9,7 +9,10 @@ import {
   GOAL_HEIGHT,
   GOAL_DEPTH,
 } from '../core/constants';
+import { Crowd } from './Crowd';
 import { EnergyWall } from './EnergyWall';
+import { Scoreboard } from './Scoreboard';
+import { Ships } from './Ships';
 
 /**
  * Arena orbitale: campo olografico procedurale con griglia luminosa animata,
@@ -19,11 +22,14 @@ import { EnergyWall } from './EnergyWall';
 export class Arena {
   readonly group = new THREE.Group();
   readonly walls: { wall: EnergyWall; axis: 'x' | 'z'; sign: number }[] = [];
+  readonly crowd: Crowd;
+  readonly scoreboard: Scoreboard;
+  private ships: Ships;
 
   private fieldMaterial: THREE.ShaderMaterial;
   private skyMaterial: THREE.ShaderMaterial;
 
-  constructor() {
+  constructor(teamColors: [number, number] = [0x49e9ff, 0xb44aff]) {
     this.fieldMaterial = this.buildField();
     this.buildPlatform();
     this.buildWalls();
@@ -32,6 +38,13 @@ export class Arena {
     this.skyMaterial = this.buildSky();
     this.buildPlanet();
     this.buildLights();
+
+    this.crowd = new Crowd(teamColors);
+    this.group.add(this.crowd.mesh);
+    this.ships = new Ships(5);
+    this.group.add(this.ships.group);
+    this.scoreboard = new Scoreboard();
+    this.group.add(this.scoreboard.group);
   }
 
   // ---------------------------------------------------------------- campo
@@ -462,12 +475,44 @@ export class Arena {
       [-HALF_LENGTH - 8, 26, HALF_WIDTH + 8],
       [HALF_LENGTH + 8, 26, HALF_WIDTH + 8],
     ];
+    const coneMat = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide,
+      uniforms: { uColor: { value: new THREE.Color(0x7fc8ef) } },
+      vertexShader: /* glsl */ `
+        varying vec2 vUv;
+        void main() {
+          vUv = uv;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: /* glsl */ `
+        uniform vec3 uColor;
+        varying vec2 vUv;
+        void main() {
+          // più denso verso la sorgente, sfuma verso il campo
+          float a = vUv.y * vUv.y * 0.16;
+          gl_FragColor = vec4(uColor, a);
+        }
+      `,
+    });
     for (const [x, y, z] of spotPositions) {
       const spot = new THREE.SpotLight(0x9fd8ff, 600, 120, Math.PI / 5, 0.5, 1.8);
       spot.position.set(x, y, z);
       spot.target.position.set(x * 0.25, 0, z * 0.25);
       this.group.add(spot);
       this.group.add(spot.target);
+
+      // cono di luce volumetrico (fascio visibile del riflettore)
+      const cone = new THREE.Mesh(new THREE.ConeGeometry(8.5, 30, 24, 1, true), coneMat);
+      const target = new THREE.Vector3(x * 0.25, 0, z * 0.25);
+      const mid = new THREE.Vector3(x, y, z).lerp(target, 0.5);
+      cone.position.copy(mid);
+      cone.lookAt(x, y, z);
+      cone.rotateX(-Math.PI / 2);
+      this.group.add(cone);
 
       // torre del riflettore (silhouette)
       const tower = new THREE.Mesh(
@@ -489,5 +534,8 @@ export class Arena {
     this.fieldMaterial.uniforms.uTime.value = time;
     this.skyMaterial.uniforms.uTime.value = time;
     for (const { wall } of this.walls) wall.update(dt, time);
+    this.crowd.update(dt, time);
+    this.ships.update(time);
+    this.scoreboard.update(time);
   }
 }

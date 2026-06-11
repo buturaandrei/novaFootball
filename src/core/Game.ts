@@ -17,7 +17,8 @@ import { Match } from '../match/Match';
 import { Tackles } from '../match/Tackles';
 import { Team } from '../match/Team';
 import { Ball } from '../physics/Ball';
-import { FLUX_PROFILES } from '../flux/FluxProfile';
+import { buildTeamConfig } from '../match/teamConfigs';
+import { FLUX_PROFILES, type FluxProfileId } from '../flux/FluxProfile';
 import { FluxMoves } from '../flux/FluxMoves';
 import { FluxShot } from '../flux/FluxShot';
 import { FluxSystem } from '../flux/FluxSystem';
@@ -37,12 +38,18 @@ import {
   PLAYER_RADIUS,
 } from './constants';
 
+export interface GameConfig {
+  player: FluxProfileId;
+  opponent: FluxProfileId;
+  difficulty: DifficultyName;
+  /** Partita automatica IA contro IA (bilanciamento / modalità vetrina). */
+  demo?: boolean;
+}
+
 /**
  * Cuore del gioco: collega input, fisica, regia, vfx, audio, match e HUD.
- * Milestone 2: squadre complete 7v7 (formazione 2-3-1 + portiere con IA
- * dedicata), passaggi rasoterra/filtranti, contrasti con falli e punizioni
- * semplificate, due tempi con cronometro. L'IA di movimento arriva nella
- * milestone 3: i compagni tengono la posizione di formazione.
+ * Le squadre e la difficoltà arrivano dal menu di selezione; la modalità
+ * demo fa giocare l'IA anche per la squadra del giocatore.
  */
 export class Game {
   private renderer: THREE.WebGLRenderer;
@@ -51,9 +58,13 @@ export class Game {
   readonly time = new Time();
   private clock = new THREE.Clock();
 
-  private arena = new Arena();
+  private arena: Arena;
   readonly ball = new Ball();
   readonly teams: Team[];
+  readonly demo: boolean;
+  /** Contatori per il bilanciamento (mosse e tiri Flux per squadra). */
+  readonly stats = { fluxUses: [0, 0], fluxShots: [0, 0] };
+  private paused = false;
   readonly players: Player[];
   private activePlayerRef: Player;
 
@@ -89,7 +100,9 @@ export class Game {
   private camRight = new THREE.Vector3();
   private moveDir = new THREE.Vector3();
 
-  constructor(container: HTMLElement) {
+  constructor(container: HTMLElement, config: GameConfig) {
+    this.demo = !!config.demo;
+    this.difficulty = config.difficulty;
     this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.setSize(window.innerWidth, window.innerHeight);
@@ -118,53 +131,18 @@ export class Game {
     this.composer.addPass(bloom);
     this.composer.addPass(new OutputPass());
 
+    // --- squadre dal menu di selezione ---
+    this.teams = [
+      new Team(buildTeamConfig(config.player, -1), 0),
+      new Team(buildTeamConfig(config.opponent, 1), 1),
+    ];
+
     // --- scena ---
+    this.arena = new Arena([this.teams[0].color, this.teams[1].color]);
     this.scene.add(this.arena.group);
     this.scene.add(this.ball.mesh);
     this.scene.add(this.particles.points);
     this.scene.add(this.chargeRing.mesh);
-
-    // --- squadre: GELO (giocatore) contro OMBRA o RUGGITO ---
-    // (la selezione squadra completa arriva col menu della milestone 6;
-    //  intanto ?avversario=ruggito sceglie il terzo Flux)
-    const opponentConfigs = {
-      ombra: {
-        name: 'OMBRA',
-        defendsSide: 1,
-        color: 0xb44aff,
-        flux: 'ombra' as const,
-        colors: { primary: 0x4a2a6e, secondary: 0x1a1024, glow: 0xb44aff },
-        gkColors: { primary: 0x32184e, secondary: 0x120a1c, glow: 0xd99aff },
-        roster: ['Tenebr', 'Nox', 'Lyrr', 'Vesper', 'Crepus', 'Umbra', 'Vrax'],
-      },
-      ruggito: {
-        name: 'RUGGITO',
-        defendsSide: 1,
-        color: 0xffa53c,
-        flux: 'ruggito' as const,
-        colors: { primary: 0x8a4a1a, secondary: 0x2e1606, glow: 0xffa53c },
-        gkColors: { primary: 0x6a3210, secondary: 0x1e0e04, glow: 0xffd28c },
-        roster: ['Korr', 'Brann', 'Tarvok', 'Sela', 'Drogh', 'Maula', 'Ragnar'],
-      },
-    };
-    const oppKey = new URLSearchParams(window.location.search).get('avversario');
-    const opponent = oppKey === 'ruggito' ? opponentConfigs.ruggito : opponentConfigs.ombra;
-
-    this.teams = [
-      new Team(
-        {
-          name: 'GELO',
-          defendsSide: -1,
-          color: 0x49e9ff,
-          flux: 'gelo',
-          colors: { primary: 0x2a6f9e, secondary: 0x10222e, glow: 0x49e9ff },
-          gkColors: { primary: 0x1a4a72, secondary: 0x0c1a26, glow: 0x9af2ff },
-          roster: ['Boreas', 'Ilya', 'Vesna', 'Nyra', 'Sorin', 'Mirka', 'Kael'],
-        },
-        0,
-      ),
-      new Team(opponent, 1),
-    ];
     this.players = [...this.teams[0].players, ...this.teams[1].players];
     for (const p of this.players) this.scene.add(p.object3d);
     this.activePlayerRef = this.teams[0].fieldPlayers[this.teams[0].fieldPlayers.length - 1];
@@ -229,8 +207,16 @@ export class Game {
     this.teamAIs = [
       new TeamAI(
         this.teams[0], this.teams[1], this.ball, this.ballControl, this.tackles,
-        () => DIFFICULTIES.normale,
-        (p) => p === this.activePlayerRef,
+        () => (this.demo ? DIFFICULTIES[this.difficulty] : DIFFICULTIES.normale),
+        (p) => !this.demo && p === this.activePlayerRef,
+        this.demo
+          ? {
+              trySprint: (p) => this.useFlux(0, 'sprint', p),
+              tryDribble: (p) => this.useFlux(0, 'dribble', p),
+              tryFluxShot: (p) => this.startFluxShot(0, p, true),
+              barRatio: () => this.fluxSystems[0].ratio,
+            }
+          : null,
       ),
       new TeamAI(
         this.teams[1], this.teams[0], this.ball, this.ballControl, this.tackles,
@@ -240,6 +226,7 @@ export class Game {
           trySprint: (p) => this.useFlux(1, 'sprint', p),
           tryDribble: (p) => this.useFlux(1, 'dribble', p),
           tryFluxShot: (p) => this.startFluxShot(1, p, true),
+          barRatio: () => this.fluxSystems[1].ratio,
         },
       ),
     ];
@@ -255,14 +242,13 @@ export class Game {
       if (d) this.setDifficulty(d);
     });
 
-    this.hud = new Hud(container, () => {
-      this.audio.unlock();
-      if (!this.started) {
-        this.started = true;
-        this.match.restart();
-        this.hud.showMessage('SI COMINCIA!', 1.6);
-      }
+    this.hud = new Hud(container);
+    this.hud.onPauseRequest = () => this.togglePause();
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyP' || e.code === 'Escape') this.togglePause();
     });
+    // ritenta lo sblocco audio al primo gesto in partita (iOS)
+    container.addEventListener('pointerdown', () => this.audio.unlock(), { once: true });
     this.hud.setScore(this.match);
     this.hud.setClock(this.match.half, this.match.clock);
 
@@ -402,6 +388,7 @@ export class Game {
     this.match.events.onGoal = (scoringTeam, ballPos) => {
       const teamName = scoringTeam >= 0 ? this.teams[scoringTeam].name : '';
       if (scoringTeam >= 0) this.fluxSystems[scoringTeam].creditGoal();
+      this.arena.crowd.cheer();
       this.hud.showMessage(`GOAL! ${teamName}`, 2.8);
       this.hud.setScore(this.match);
       this.audio.whistle();
@@ -435,8 +422,9 @@ export class Game {
       }
     };
     this.match.events.onKickoff = () => {
+      this.ballControl.clearHold(); // mai un kickoff con la palla "in presa"
       this.director.request(CameraState.OpenPlay, { cut: true });
-      this.director.resetChase(Math.PI / 2); // GELO attacca verso +x
+      this.director.resetChase(Math.PI / 2); // la squadra di casa attacca verso +x
       this.setActivePlayer(this.nearestFieldPlayer(this.ball.position));
     };
     this.match.events.onHalftime = () => {
@@ -452,7 +440,7 @@ export class Game {
           : a > b
             ? `VITTORIA ${this.teams[0].name} ${a}–${b}`
             : `VITTORIA ${this.teams[1].name} ${b}–${a}`;
-      this.hud.showMessage(result, 6);
+      this.hud.showResult(result, () => this.rematch());
     };
   }
 
@@ -478,6 +466,7 @@ export class Game {
     } else {
       this.fluxMoves.dribble(player, system.profile, opponents);
     }
+    this.stats.fluxUses[teamIndex]++;
     return true;
   }
 
@@ -506,6 +495,7 @@ export class Game {
     }
     system.spend(FLUX_SHOT_COST);
     this.fluxShot.start(shooter, teamIndex, system.profile);
+    this.stats.fluxShots[teamIndex]++;
     return true;
   }
 
@@ -533,7 +523,38 @@ export class Game {
     this.renderer.setAnimationLoop(() => this.frame());
   }
 
+  /** Avvia la partita (dopo il menu): sblocca l'audio e fischia l'inizio. */
+  beginMatch(): void {
+    this.audio.unlock();
+    if (!this.started) {
+      this.started = true;
+      this.match.restart();
+      this.hud.showMessage('SI COMINCIA!', 1.6);
+    }
+  }
+
+  togglePause(): void {
+    if (!this.started) return;
+    this.paused = !this.paused;
+    this.hud.setPauseVisible(this.paused);
+  }
+
+  /** Rivincita con le stesse squadre. */
+  private rematch(): void {
+    this.hud.hideResult();
+    this.match.restart();
+    for (const f of this.fluxSystems) f.reset();
+    this.stats.fluxUses = [0, 0];
+    this.stats.fluxShots = [0, 0];
+    this.hud.setScore(this.match);
+    this.hud.showMessage('SI RICOMINCIA!', 1.6);
+  }
+
   private frame(): void {
+    if (this.paused) {
+      this.composer.render();
+      return;
+    }
     const frameDt = this.clock.getDelta();
     const rawDt = Math.min(frameDt, 1 / 30);
     const dt = this.time.update(rawDt);
@@ -593,12 +614,9 @@ export class Game {
       }
     }
 
-    // rivincita a fischio finale
+    // rivincita a fischio finale (oltre ai pulsanti del pannello)
     if (phase === 'fulltime' && (frame.kickPressed || frame.passPressed)) {
-      this.match.restart();
-      for (const f of this.fluxSystems) f.reset();
-      this.hud.setScore(this.match);
-      this.hud.showMessage('SI RICOMINCIA!', 1.6);
+      this.rematch();
     }
 
     // mosse Flux del giocatore (scatto E / dribbling R / tiro F), con
@@ -696,7 +714,7 @@ export class Game {
         for (const p of this.teams[ti].players) {
           if (p.role === 'portiere') continue; // gestiti dai controller
           let cmd: PlayerCommand | null = null;
-          if (playing && p === activeNow && !cine) {
+          if (playing && p === activeNow && !cine && !this.demo) {
             cmd = { moveDir: this.moveDir, sprint: frame.sprint, jumpPressed: frame.jumpPressed };
           } else if (phase === 'playing' && this.started) {
             cmd = this.teamAIs[ti].getCommand(p);
@@ -751,6 +769,22 @@ export class Game {
     // audio e HUD
     this.audio.update(dt);
     this.input.touch.setFluxShotReady(this.fluxSystems[0].ready);
+
+    // tabellone olografico e radar
+    const cl = Math.max(0, Math.ceil(this.match.clock));
+    this.arena.scoreboard.setText(
+      `${this.teams[0].name} ${this.match.score[0]} — ${this.match.score[1]} ${this.teams[1].name}` +
+      `   ${this.match.half}T ${Math.floor(cl / 60)}:${String(cl % 60).padStart(2, '0')}`,
+    );
+    this.hud.updateRadar(
+      this.players.map((p) => ({ x: p.position.x, z: p.position.z, team: p.team })),
+      { x: this.ball.position.x, z: this.ball.position.z },
+      [
+        `#${this.teams[0].color.toString(16).padStart(6, '0')}`,
+        `#${this.teams[1].color.toString(16).padStart(6, '0')}`,
+      ],
+    );
+
     this.hud.setStamina(activeNow.stamina / 100);
     this.hud.setFlux(
       this.fluxSystems[0].ratio, this.fluxSystems[0].ready, this.fluxSystems[0].profile,

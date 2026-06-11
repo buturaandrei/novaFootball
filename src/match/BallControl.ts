@@ -128,6 +128,14 @@ export class BallControl {
     for (const p of cooldownPlayers) this.cooldowns.set(p, KICK_COOLDOWN * 1.6);
   }
 
+  /** Azzera presa e possesso (kickoff, reset di fase). */
+  clearHold(): void {
+    this.heldBy = null;
+    this.setOwner(null);
+    this.charging = false;
+    this.charge = 0;
+  }
+
   /** Il portiere blocca la palla in presa. */
   hold(gk: Player): void {
     this.heldBy = gk;

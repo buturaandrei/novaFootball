@@ -2,7 +2,7 @@ import { chromium } from 'playwright';
 const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
 const page = await browser.newPage({ viewport: { width: 640, height: 360 } });
 page.on('pageerror', (e) => console.log('PAGEERROR:', String(e)));
-await page.goto('http://localhost:4517/', { waitUntil: 'networkidle' });
+await page.goto('http://localhost:4517/?io=gelo&avversario=ombra', { waitUntil: 'networkidle' });
 await page.waitForTimeout(1000);
 await page.mouse.click(320, 180);
 await page.waitForTimeout(3000); // lascia registrare qualche campione

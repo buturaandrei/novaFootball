@@ -2,7 +2,7 @@
 // posizioni/velocità per capire cosa fa il portatore.
 import { chromium } from 'playwright';
 
-const url = process.argv[2] ?? 'http://localhost:4517/';
+const url = process.argv[2] ?? 'http://localhost:4517/?io=gelo&avversario=ombra';
 const browser = await chromium.launch({
   args: ['--enable-unsafe-swiftshader', '--use-angle=swiftshader', '--disable-gpu-sandbox'],
 });

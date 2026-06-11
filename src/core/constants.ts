@@ -58,7 +58,7 @@ export const GETUP_DURATION = 0.4;   // rialzata dopo scivolata/tuffo
 // Portiere
 export const GK_REACH = 1.1;
 export const GK_DIVE_SPEED = 12;       // velocità massima del tuffo
-export const GK_CATCH_MAX_SPEED = 17;  // sopra questa velocità il tiro viene respinto, non bloccato
+export const GK_CATCH_MAX_SPEED = 16;  // sopra questa velocità il tiro viene respinto, non bloccato
 export const GK_HOLD_TIME = 1.1;       // secondi con palla in mano prima del rinvio
 export const GK_CLAIM_RADIUS = 7;      // raggio di uscita su palla vagante
 export const GK_LINE_DISTANCE = 1.6;   // distanza base dalla linea di porta
@@ -69,7 +69,7 @@ export const FREE_KICK_DISTANCE = 6; // distanza minima degli avversari dalla pu
 
 // Flux
 export const FLUX_MAX = 100;
-export const FLUX_TIME_RATE = 1.5;   // carica passiva al secondo
+export const FLUX_TIME_RATE = 1.8;   // carica passiva al secondo
 export const FLUX_PASS_BONUS = 6;    // passaggio riuscito
 export const FLUX_TACKLE_BONUS = 8;  // contrasto vinto
 export const FLUX_AERIAL_BONUS = 3;  // giocata spettacolare (doppio salto)
