@@ -94,6 +94,9 @@ export class TouchSource implements InputSource {
     this.makeButton('CAMBIO', 'right:14px;top:64px;width:46px;height:46px;', (down) => {
       this.state.switchPlayer = down;
     });
+    this.makeButton('CAM', 'right:70px;top:64px;width:46px;height:46px;', (down) => {
+      this.state.camera = down;
+    });
 
     // Mostra i controlli su dispositivi touch, o al primo tocco su ibridi.
     if (window.matchMedia('(pointer: coarse)').matches || 'ontouchstart' in window) {

@@ -237,6 +237,44 @@ try {
   errors.push('la partita non è ripresa dopo il tiro Flux');
 }
 
+// --- FLUX contestuale (pulsante touch): a barra piena aggancia la palla
+//     vicina e fa partire il tiro Flux, mai uno scatto a sorpresa ---
+await ensurePlaying().catch(() => {});
+await page.evaluate(() => {
+  const g = window.__nova;
+  g.match.kickoff();
+  g.fluxSystems[0].value = 100;
+  const a = g.activePlayer;
+  g.ball.reset(a.position.x + 1.5, a.position.z); // vicina ma non agganciata
+  g.input.touch.state.fluxSmart = true;
+});
+await page.waitForTimeout(700);
+await page.evaluate(() => { window.__nova.input.touch.state.fluxSmart = false; });
+try {
+  await page.waitForFunction(() => window.__nova.fluxShot.active, { timeout: 15000 });
+  check('FLUX contestuale: tiro Flux con palla vicina', true);
+} catch {
+  check('FLUX contestuale: tiro Flux con palla vicina', false);
+}
+try {
+  await page.waitForFunction(
+    () => !window.__nova.fluxShot.active && window.__nova.time.scale > 0.9,
+    { timeout: 120000 },
+  );
+} catch { errors.push('sequenza FLUX contestuale non conclusa'); }
+await ensurePlaying().catch(() => errors.push('partita non ripresa dopo FLUX contestuale'));
+
+// --- cambio visuale: C alterna terza persona e telecronaca ---
+await page.keyboard.down('KeyC');
+await page.waitForTimeout(600);
+await page.keyboard.up('KeyC');
+const vm = await page.evaluate(() => window.__nova.director.viewMode);
+check('cambio visuale con C (azione → telecronaca)', vm === 'telecronaca');
+await page.keyboard.down('KeyC');
+await page.waitForTimeout(600);
+await page.keyboard.up('KeyC');
+await page.screenshot({ path: '/tmp/shot-terza.png' });
+
 // --- regressione: la punizione IA non blocca più la partita ---
 await ensurePlaying().catch(() => errors.push('fase playing non raggiunta prima della punizione'));
 await page.evaluate(() => {

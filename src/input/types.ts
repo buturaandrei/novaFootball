@@ -15,6 +15,8 @@ export interface RawInputState {
   fluxShot: boolean;
   /** Pulsante FLUX contestuale del touch: tiro/dribbling/scatto Flux. */
   fluxSmart: boolean;
+  /** Cambio visuale (telecronaca ↔ terza persona). */
+  camera: boolean;
 }
 
 export function emptyRawState(): RawInputState {
@@ -31,6 +33,7 @@ export function emptyRawState(): RawInputState {
     fluxDribble: false,
     fluxShot: false,
     fluxSmart: false,
+    camera: false,
   };
 }
 
@@ -50,6 +53,7 @@ export interface InputFrame {
   fluxDribblePressed: boolean;
   fluxShotPressed: boolean;
   fluxSmartPressed: boolean;
+  cameraPressed: boolean;
 }
 
 export interface InputSource {

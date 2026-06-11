@@ -43,8 +43,13 @@ node scripts/smoke-test.mjs
 | Tiro Flux (a barra piena, palla al piede) | F | R3 o LT+RT | FLUX (con palla, barra piena: si illumina) |
 | Parata Flux (QTE durante il tiro avversario) | J | X | TIRO |
 | Cambio giocatore | Q / Tab | LB | CAMBIO |
+| Cambio visuale (azione ↔ telecronaca) | C | — | CAM |
 | Difficoltà (facile/normale/difficile) | 1 / 2 / 3 | — | — |
 | Mostra/nascondi aiuto | H | — | — |
+
+Visuali: **azione** (default) è una terza persona dietro il giocatore attivo
+in stile Rematch; **telecronaca** è la classica inquadratura laterale alta.
+La preferenza viene ricordata tra una partita e l'altra.
 
 Su touch lo schema è volutamente minimale (stile "The Spike"): tre pulsanti
 contestuali (TIRO, PASSA, FLUX) + SALTO; è il contesto a decidere la mossa.

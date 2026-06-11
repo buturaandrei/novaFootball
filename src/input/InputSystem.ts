@@ -20,6 +20,7 @@ export class InputSystem {
   private prevFluxDribble = false;
   private prevFluxShot = false;
   private prevFluxSmart = false;
+  private prevCamera = false;
 
   readonly frame: InputFrame = {
     moveX: 0,
@@ -36,6 +37,7 @@ export class InputSystem {
     fluxDribblePressed: false,
     fluxShotPressed: false,
     fluxSmartPressed: false,
+    cameraPressed: false,
   };
 
   constructor(uiParent: HTMLElement) {
@@ -56,6 +58,7 @@ export class InputSystem {
     let fxD = false;
     let fxT = false;
     let fxC = false;
+    let cam = false;
 
     for (const src of this.sources) {
       const s = src.poll();
@@ -71,6 +74,7 @@ export class InputSystem {
       fxD = fxD || s.fluxDribble;
       fxT = fxT || s.fluxShot;
       fxC = fxC || s.fluxSmart;
+      cam = cam || s.camera;
     }
 
     const len = Math.hypot(moveX, moveY);
@@ -94,6 +98,7 @@ export class InputSystem {
     f.fluxDribblePressed = fxD && !this.prevFluxDribble;
     f.fluxShotPressed = fxT && !this.prevFluxShot;
     f.fluxSmartPressed = fxC && !this.prevFluxSmart;
+    f.cameraPressed = cam && !this.prevCamera;
 
     this.prevJump = jump;
     this.prevKick = kick;
@@ -104,6 +109,7 @@ export class InputSystem {
     this.prevFluxDribble = fxD;
     this.prevFluxShot = fxT;
     this.prevFluxSmart = fxC;
+    this.prevCamera = cam;
     return f;
   }
 }

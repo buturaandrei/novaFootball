@@ -1,7 +1,11 @@
 import * as THREE from 'three';
-import { damp, dampVec3 } from '../core/math';
+import { damp, dampAngle, dampVec3 } from '../core/math';
+import { HALF_LENGTH, HALF_WIDTH } from '../core/constants';
 import type { Ball } from '../physics/Ball';
 import type { Player } from '../entities/Player';
+
+/** Visuale di gioco: telecronaca classica o terza persona "azione". */
+export type ViewMode = 'telecronaca' | 'azione';
 
 /**
  * Stati del regista virtuale. Ogni stato ha priorità e durata minima:
@@ -52,9 +56,13 @@ export interface DirectorContext {
 export class CameraDirector {
   readonly camera: THREE.PerspectiveCamera;
   state = CameraState.OpenPlay;
+  /** Visuale del gioco aperto (la regia di goal/Flux/replay non cambia). */
+  viewMode: ViewMode = 'azione';
   /** Regia esterna (tiro Flux, replay): pilota direttamente la camera. */
   private override: ((camera: THREE.PerspectiveCamera, dt: number) => void) | null = null;
   private stateTime = 0;
+  /** Yaw smussato della terza persona (dietro il giocatore attivo). */
+  private chaseYaw = Math.PI / 2; // all'avvio si attacca verso +x
   private goalFocus = new THREE.Vector3();
   private goalOrbitAngle = 0;
 
@@ -72,6 +80,11 @@ export class CameraDirector {
   constructor(aspect: number) {
     this.camera = new THREE.PerspectiveCamera(55, aspect, 0.1, 2000);
     this.camera.position.copy(this.currentPos);
+  }
+
+  /** Riallinea la terza persona (es. al kickoff, verso la porta avversaria). */
+  resetChase(yaw: number): void {
+    this.chaseYaw = yaw;
   }
 
   /** Richiede un cambio di stato; rispetta priorità e durata minima. */
@@ -138,7 +151,40 @@ export class CameraDirector {
       case CameraState.OpenPlay:
       default: {
         const ballPos = ctx.ball.position;
-        const activePos = ctx.active.position;
+        const active = ctx.active;
+
+        if (this.viewMode === 'azione') {
+          // terza persona "alla Rematch": dietro il giocatore attivo,
+          // lo yaw segue dolcemente la direzione di corsa
+          const speed = Math.hypot(active.velocity.x, active.velocity.z);
+          if (speed > 1.5) {
+            const moveYaw = Math.atan2(active.velocity.x, active.velocity.z);
+            this.chaseYaw = dampAngle(this.chaseYaw, moveYaw, 2.8, dt);
+          }
+          const back = this.anticipation.set(Math.sin(this.chaseYaw), 0, Math.cos(this.chaseYaw));
+
+          this.targetPos
+            .copy(active.position)
+            .addScaledVector(back, -5.6);
+          this.targetPos.y = 2.8 + active.position.y * 0.4;
+          // niente camera oltre i muri energetici
+          this.targetPos.x = THREE.MathUtils.clamp(this.targetPos.x, -HALF_LENGTH + 1.2, HALF_LENGTH - 1.2);
+          this.targetPos.z = THREE.MathUtils.clamp(this.targetPos.z, -HALF_WIDTH + 1.2, HALF_WIDTH - 1.2);
+
+          // guarda avanti, con la palla che "pesa" sull'inquadratura
+          this.targetLook
+            .copy(active.position)
+            .addScaledVector(back, 6.5);
+          this.targetLook.y = 1.1;
+          this.targetLook.lerp(ballPos, 0.3);
+
+          targetFov = active.sprinting ? 68 : 62;
+          if (ctx.fluxBoost) targetFov += 6;
+          if (ctx.charging) targetFov -= 4;
+          posLambda = 6.5;
+          lookLambda = 8;
+          break;
+        }
 
         // fuoco: palla pesata col giocatore attivo + anticipo sulla velocità della palla
         this.anticipation.copy(ctx.ball.velocity).setY(0).multiplyScalar(0.35);
@@ -147,7 +193,7 @@ export class CameraDirector {
 
         this.targetLook
           .copy(ballPos).multiplyScalar(0.62)
-          .addScaledVector(activePos, 0.38)
+          .addScaledVector(active.position, 0.38)
           .add(this.anticipation);
         this.targetLook.y = Math.max(0.8, this.targetLook.y * 0.5 + 0.6);
 
@@ -158,7 +204,7 @@ export class CameraDirector {
           this.targetLook.z * 0.55 + 16.8,
         );
 
-        targetFov = ctx.active.sprinting ? 62 : 55;
+        targetFov = active.sprinting ? 62 : 55;
         if (ctx.fluxBoost) targetFov += 6; // lo scatto Flux spalanca il campo visivo
         if (ctx.charging) targetFov -= 4; // leggera zoomata durante la carica
         break;

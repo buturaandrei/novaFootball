@@ -100,6 +100,11 @@ export class Game {
     container.appendChild(this.renderer.domElement);
 
     this.director = new CameraDirector(window.innerWidth / window.innerHeight);
+    // visuale preferita salvata (default: terza persona "azione")
+    const savedView = window.localStorage?.getItem('nova-visuale');
+    if (savedView === 'telecronaca' || savedView === 'azione') {
+      this.director.viewMode = savedView;
+    }
 
     // post-processing: bloom per il look olografico
     this.composer = new EffectComposer(this.renderer);
@@ -431,6 +436,7 @@ export class Game {
     };
     this.match.events.onKickoff = () => {
       this.director.request(CameraState.OpenPlay, { cut: true });
+      this.director.resetChase(Math.PI / 2); // GELO attacca verso +x
       this.setActivePlayer(this.nearestFieldPlayer(this.ball.position));
     };
     this.match.events.onHalftime = () => {
@@ -540,6 +546,14 @@ export class Game {
       this.setActivePlayer(this.nearestFieldPlayer(this.ball.position, active));
     }
 
+    // cambio visuale (C / pulsante CAM)
+    if (frame.cameraPressed) {
+      const next = this.director.viewMode === 'azione' ? 'telecronaca' : 'azione';
+      this.director.viewMode = next;
+      window.localStorage?.setItem('nova-visuale', next);
+      this.hud.showMessage(next === 'azione' ? 'VISUALE: AZIONE' : 'VISUALE: TELECRONACA', 1.2);
+    }
+
     // input camera-relative
     this.director.camera.getWorldDirection(this.camForward);
     this.camForward.y = 0;
@@ -601,20 +615,32 @@ export class Game {
       if (frame.fluxShotPressed) {
         this.startFluxShot(0, this.activePlayer);
       }
-      // pulsante FLUX contestuale (touch): decide da solo la mossa
+      // pulsante FLUX contestuale (touch): decide da solo la mossa.
+      // A barra piena promette SEMPRE il tiro Flux: se la palla è a
+      // portata viene agganciata, altrimenti lo dice chiaramente —
+      // mai uno scatto "a sorpresa" che brucia l'energia del tiro.
       if (frame.fluxSmartPressed) {
-        const hasBall = this.ballControl.owner === this.activePlayer;
-        let done: boolean;
-        if (hasBall && this.fluxSystems[0].ready) {
-          done = this.startFluxShot(0, this.activePlayer, true);
-        } else if (hasBall) {
-          done = this.useFlux(0, 'dribble', this.activePlayer);
+        const active = this.activePlayer;
+        const hasBall = this.ballControl.owner === active;
+        if (this.fluxSystems[0].ready) {
+          const ballNear =
+            !this.ballControl.heldBy &&
+            active.position.distanceTo(this.ball.position) < 2.6;
+          if (!hasBall && ballNear) this.ballControl.givePossession(active);
+          if (hasBall || ballNear) {
+            this.startFluxShot(0, active);
+          } else {
+            this.audio.denied();
+            this.hud.showMessage('SERVE LA PALLA AL PIEDE', 1.1);
+          }
         } else {
-          done = this.useFlux(0, 'sprint', this.activePlayer);
-        }
-        if (!done) {
-          this.audio.denied();
-          this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
+          const done = hasBall
+            ? this.useFlux(0, 'dribble', active)
+            : this.useFlux(0, 'sprint', active);
+          if (!done) {
+            this.audio.denied();
+            this.hud.showMessage('FLUX INSUFFICIENTE', 0.9);
+          }
         }
       }
     }
