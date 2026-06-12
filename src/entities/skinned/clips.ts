@@ -153,8 +153,8 @@ export function buildClipLibrary(restPelvisY: number): ClipLibrary {
     };
   }, R));
   add(sampleLoop('walk', 0.92, 8, (p) => gaitPose(p, 0.42, 0.55, 0.025, 0.06, 0.3), R));
-  add(sampleLoop('run', 0.62, 8, (p) => gaitPose(p, 0.85, 1.2, 0.05, 0.18, 0.68), R));
-  add(sampleLoop('sprint', 0.5, 8, (p) => gaitPose(p, 1.1, 1.45, 0.065, 0.3, 0.9), R));
+  add(sampleLoop('run', 0.62, 8, (p) => gaitPose(p, 0.98, 1.3, 0.05, 0.18, 0.75), R));
+  add(sampleLoop('sprint', 0.5, 8, (p) => gaitPose(p, 1.25, 1.55, 0.065, 0.3, 1.0), R));
   add(sampleLoop('back', 0.8, 8, (p) => gaitPose(1 - p, 0.45, 0.5, 0.03, -0.08, 0.3), R));
   add(sampleLoop('strafeL', 0.7, 8, (p) => strafePose(p, 1), R));
   add(sampleLoop('strafeR', 0.7, 8, (p) => strafePose(p, -1), R));

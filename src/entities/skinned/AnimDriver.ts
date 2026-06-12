@@ -30,6 +30,13 @@ export class AnimDriver {
   private actions = new Map<string, THREE.AnimationAction>();
   /** Azione corrente che possiede il corpo (one-shot o tenuta). */
   private current: { name: string; action: THREE.AnimationAction; hold: boolean } | null = null;
+  /**
+   * Fase di falcata CONDIVISA tra tutte le andature: i cicli hanno periodi
+   * diversi e se avanzassero in autonomia il blend tra cicli sfasati si
+   * annullerebbe a vicenda (gambe "ferme"). Qui il tempo di ogni clip è
+   * pilotato a mano sulla stessa fase normalizzata.
+   */
+  private gaitPhase = Math.random();
 
   constructor(root: THREE.Object3D, restPelvisY: number) {
     this.mixer = new THREE.AnimationMixer(root);
@@ -39,6 +46,8 @@ export class AnimDriver {
       const action = this.mixer.clipAction(this.library.clips.get(name)!);
       action.play();
       action.setEffectiveWeight(name === 'idle' ? 1 : 0);
+      // le andature cicliche sono pilotate dalla fase condivisa
+      if (name !== 'idle' && name !== 'aria') action.setEffectiveTimeScale(0);
       this.loco[name] = action;
     }
     this.charge = this.mixer.clipAction(this.library.clips.get('carica')!);
@@ -135,13 +144,18 @@ export class AnimDriver {
         // ri-attiva eventuali fadeOut precedenti e riprendi il controllo dei pesi
         if (!a.isRunning()) a.play();
         a.stopFading();
-        a.setEffectiveWeight(damp(a.getEffectiveWeight(), w[name], 12, dt));
+        a.setEffectiveWeight(damp(a.getEffectiveWeight(), w[name], 14, dt));
       }
-      // il ciclo segue la velocità reale dei piedi
-      const stride = Math.max(0.4, p.speed / 7.2);
-      this.loco.run.setEffectiveTimeScale(stride);
-      this.loco.sprint.setEffectiveTimeScale(Math.max(0.6, p.speed / 11));
-      this.loco.walk.setEffectiveTimeScale(Math.max(0.5, p.speed / 3.2));
+      // fase di falcata condivisa, frequenza agganciata alla velocità reale
+      if (p.onGround && p.speed > 0.25) {
+        const cyclesPerSec = 0.7 + p.speed * 0.16;
+        this.gaitPhase = (this.gaitPhase + dt * cyclesPerSec) % 1;
+      }
+      const ph = this.gaitPhase;
+      for (const name of ['walk', 'run', 'sprint', 'back', 'strafeL', 'strafeR'] as const) {
+        const a = this.loco[name];
+        a.time = ph * a.getClip().duration;
+      }
     }
     if (p) {
       this.charge.setEffectiveWeight(damp(this.charge.getEffectiveWeight(), p.charge * 1.4, 14, dt));
@@ -166,10 +180,13 @@ export class AnimDriver {
       w.idle = 1;
       return w;
     }
-    // direzione locale: laterale/indietro sostituiscono il ciclo frontale
+    // direzione locale con DEADZONE: l'inseguimento della camera produce
+    // sempre una piccola componente laterale che non deve diluire la corsa
     const mag = Math.max(0.001, Math.hypot(p.forward, p.side));
-    const sideRatio = Math.abs(p.side) / mag;
-    const backRatio = p.forward < 0 ? -p.forward / mag : 0;
+    let sideRatio = Math.abs(p.side) / mag;
+    let backRatio = p.forward < 0 ? -p.forward / mag : 0;
+    sideRatio = sideRatio < 0.45 ? 0 : (sideRatio - 0.45) / 0.55;
+    backRatio = backRatio < 0.5 ? 0 : (backRatio - 0.5) / 0.5;
 
     // blend frontale per velocità
     let front: Partial<Record<LocoName, number>>;
@@ -183,14 +200,21 @@ export class AnimDriver {
       const t = Math.min(1, (speed - 7.6) / (11 - 7.6));
       front = { run: 1 - t, sprint: t };
     }
-    const frontShare = Math.max(0, 1 - sideRatio * 0.9 - backRatio);
+    const frontShare = Math.max(0, 1 - sideRatio - backRatio);
     for (const [k, v] of Object.entries(front)) w[k as LocoName] = v! * frontShare;
-    if (sideRatio > 0.05) {
-      const sideW = sideRatio * 0.9 * (1 - backRatio);
+    if (sideRatio > 0) {
+      const sideW = sideRatio * (1 - backRatio);
       if (p.side >= 0) w.strafeR = sideW;
       else w.strafeL = sideW;
     }
     w.back = backRatio;
+    // pesi più netti: l'andatura dominante deve dominare davvero
+    let sum = 0;
+    for (const k of LOCO_NAMES) {
+      w[k] = w[k] * w[k];
+      sum += w[k];
+    }
+    if (sum > 1e-4) for (const k of LOCO_NAMES) w[k] /= sum;
     return w;
   }
 }
