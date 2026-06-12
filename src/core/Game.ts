@@ -714,6 +714,8 @@ export class Game {
     // --- aggiornamento giocatori (nel replay le posizioni sono riprodotte) ---
     const activeNow = this.activePlayer; // può essere cambiato dalle azioni sopra
     if (!inReplay) {
+      // tutti seguono la palla con lo sguardo (look-at della testa)
+      for (const p of this.players) p.rig.setLookTarget?.(this.ball.position);
       for (let ti = 0; ti < this.teams.length; ti++) {
         for (const p of this.teams[ti].players) {
           if (p.role === 'portiere') continue; // gestiti dai controller

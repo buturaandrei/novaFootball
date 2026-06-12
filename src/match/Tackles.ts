@@ -56,11 +56,17 @@ export class Tackles {
     return true;
   }
 
-  /** Scivolata: il giocatore parte a terra nella direzione di sguardo. */
+  /**
+   * Scivolata: il giocatore parte a terra nella direzione di sguardo.
+   * Motion warping: la velocità si adatta alla distanza dalla palla,
+   * così la corsa a terra arriva DOVE serve (né corta né lunghissima).
+   */
   slide(tackler: Player): boolean {
     if (this.cooldowns.has(tackler) || tackler.action !== 'normale' || !tackler.onGround) return false;
     if (this.ballControl.owner === tackler) return false;
-    tackler.startSlide();
+    const dist = this.tmpA.copy(this.ball.position).sub(tackler.position).setY(0).length();
+    const speed = THREE.MathUtils.clamp((dist * 0.92) / SLIDE_DURATION, 9, 15.5);
+    tackler.startSlide(speed);
     this.active.push({ player: tackler, type: 'scivolata', timer: SLIDE_DURATION, resolved: false });
     this.cooldowns.set(tackler, TACKLE_COOLDOWN * 1.4);
     return true;
@@ -104,11 +110,17 @@ export class Tackles {
     }
 
     // corpo dell'avversario colpito senza palla → fallo
+    // (la scivolata sbagliata è violenta: la vittima va giù in ragdoll)
     if (carrier && carrier.team !== tackler.team) {
       const distBody = this.tmpA.copy(carrier.position).sub(tackler.position).setY(0).length();
       if (distBody < FOUL_BODY_RADIUS) {
         tk.resolved = true;
-        carrier.stun();
+        if (tk.type === 'scivolata') {
+          const push = this.tmpA.copy(carrier.position).sub(tackler.position).setY(0).normalize();
+          carrier.knockdown(new THREE.Vector3(push.x * 6.5, 3.5, push.z * 6.5));
+        } else {
+          carrier.stun();
+        }
         this.ballControl.releaseOwner(carrier, tackler);
         this.events.onFoul?.(tackler, carrier, carrier.position.clone());
       }

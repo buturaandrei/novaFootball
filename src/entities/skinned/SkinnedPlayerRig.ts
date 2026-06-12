@@ -6,6 +6,8 @@ import type { RigColors } from '../PlayerRig';
 import type { FluxProfileId } from '../../flux/FluxProfile';
 import { makeOutlineMaterial, makeToonGradient } from './toon';
 import { AnimDriver } from './AnimDriver';
+import { aimBoneNegY, aimHead, solveTwoBoneIK } from './ik';
+import { VerletRagdoll, type RagdollPointName } from './VerletRagdoll';
 
 /** Corporature per energia: GELO slanciati, OMBRA affilati, RUGGITO massicci. */
 export const PHYSIQUES: Record<FluxProfileId, Physique> = {
@@ -110,6 +112,20 @@ export class SkinnedPlayerRig implements IPlayerRig {
   private glowMaterial: THREE.MeshStandardMaterial;
   private driver!: AnimDriver;
   private physique: Physique;
+  // --- M9: IK, sguardo, ragdoll, secondary motion ---
+  private lookTarget: THREE.Vector3 | null = null;
+  private lookPoint = new THREE.Vector3();
+  private kickPoint = new THREE.Vector3();
+  private kickWeight = 0;
+  private locks = {
+    L: { on: false, w: 0, anchor: new THREE.Vector3() },
+    R: { on: false, w: 0, anchor: new THREE.Vector3() },
+  };
+  private ragdoll: VerletRagdoll | null = null;
+  private plumeP1 = new THREE.Vector3();
+  private plumeP2 = new THREE.Vector3();
+  private plumeSegs: THREE.Mesh[] = [];
+  private plumeInit = false;
 
   constructor(colors: RigColors, physique: Physique = { height: 1, bulk: 1 }) {
     this.physique = physique;
@@ -275,6 +291,210 @@ export class SkinnedPlayerRig implements IPlayerRig {
     if (!onGround) {
       this.bones.spine.rotateX(verticalVel > 0 ? -0.08 : 0.12);
     }
+    this.postPass(dt, speed, onGround);
+  }
+
+  /**
+   * Passata post-mixer: foot-lock IK (niente scivolamento), gamba del
+   * calcio sulla palla vera, testa che segue la palla, pennacchio a molla.
+   */
+  private postPass(dt: number, speed: number, onGround: boolean): void {
+    const b = this.bones;
+    if (onGround && !this.driver.busy) {
+      this.updateFootLocks(dt, speed);
+    } else {
+      this.locks.L.on = false;
+      this.locks.R.on = false;
+      this.locks.L.w = 0;
+      this.locks.R.w = 0;
+    }
+    if (this.kickWeight > 0.02) {
+      solveTwoBoneIK(b.thighR, b.shinR, b.footR, this.kickPoint, Math.min(1, this.kickWeight) * 0.85);
+    }
+    if (this.lookTarget) {
+      aimHead(b.head, this.lookPoint, 0.85, 0.3);
+    }
+    this.updatePlume(dt);
+  }
+
+  /**
+   * Foot-lock: durante la fase d'appoggio della falcata la caviglia viene
+   * ancorata al punto di contatto e la gamba risolta in IK — il piede
+   * non slitta. Da fermi entrambi i piedi restano piantati (re-ancoraggio
+   * solo se il corpo si sposta davvero).
+   */
+  private updateFootLocks(dt: number, speed: number): void {
+    const s = Math.sin(this.driver.phase * Math.PI * 2);
+    const idle = speed < 0.6;
+    this.updateFootLock('L', idle || s < -0.2, idle, dt);
+    this.updateFootLock('R', idle || s > 0.2, idle, dt);
+  }
+
+  private updateFootLock(side: 'L' | 'R', stance: boolean, idle: boolean, dt: number): void {
+    const lock = this.locks[side];
+    const b = this.bones;
+    const foot = side === 'L' ? b.footL : b.footR;
+    const thigh = side === 'L' ? b.thighL : b.thighR;
+    const shin = side === 'L' ? b.shinL : b.shinR;
+
+    if (stance && !lock.on) {
+      foot.getWorldPosition(lock.anchor);
+      lock.on = true;
+    } else if (!stance) {
+      lock.on = false;
+    }
+    lock.w = damp(lock.w, lock.on ? 0.85 : 0, 22, dt);
+    if (!lock.on || lock.w < 0.02) return;
+
+    foot.getWorldPosition(SCRATCH_A);
+    const dx = SCRATCH_A.x - lock.anchor.x;
+    const dz = SCRATCH_A.z - lock.anchor.z;
+    const drift = Math.hypot(dx, dz);
+    // mismatch eccessivo (o passetto da fermi): ri-ancora invece di stirare
+    if (drift > (idle ? 0.28 : 0.45)) {
+      lock.anchor.copy(SCRATCH_A);
+      return;
+    }
+    SCRATCH_B.set(lock.anchor.x, SCRATCH_A.y, lock.anchor.z); // blocca solo x/z
+    solveTwoBoneIK(thigh, shin, foot, SCRATCH_B, lock.w);
+  }
+
+  /** Pennacchio sul casco: due segmenti che inseguono la testa con lag. */
+  private updatePlume(dt: number): void {
+    const head = this.bones.head;
+    head.updateWorldMatrix(true, false);
+    const base = SCRATCH_A.setFromMatrixPosition(head.matrixWorld);
+    head.getWorldQuaternion(SCRATCH_Q);
+    const up = SCRATCH_B.set(0, 1, 0).applyQuaternion(SCRATCH_Q);
+    const back = SCRATCH_C.set(0, 0, -1).applyQuaternion(SCRATCH_Q);
+    base.addScaledVector(up, 0.16).addScaledVector(back, 0.04);
+    const rest1 = SCRATCH_D.copy(base).addScaledVector(up, 0.1).addScaledVector(back, 0.05);
+    const rest2 = SCRATCH_E.copy(base).addScaledVector(up, 0.17).addScaledVector(back, 0.13);
+
+    if (!this.plumeInit) {
+      this.plumeInit = true;
+      this.plumeP1.copy(rest1);
+      this.plumeP2.copy(rest2);
+      for (let i = 0; i < 2; i++) {
+        const seg = new THREE.Mesh(
+          new THREE.CylinderGeometry(i === 0 ? 0.028 : 0.02, i === 0 ? 0.022 : 0.012, 1, 5),
+          this.glowMaterial,
+        );
+        this.plumeSegs.push(seg);
+        this.root.add(seg);
+      }
+    }
+    // inseguimento smorzato: il lag È il secondary motion
+    this.plumeP1.x = damp(this.plumeP1.x, rest1.x, 26, dt);
+    this.plumeP1.y = damp(this.plumeP1.y, rest1.y, 26, dt);
+    this.plumeP1.z = damp(this.plumeP1.z, rest1.z, 26, dt);
+    this.plumeP2.x = damp(this.plumeP2.x, rest2.x, 11, dt);
+    this.plumeP2.y = damp(this.plumeP2.y, rest2.y - 0.02, 11, dt);
+    this.plumeP2.z = damp(this.plumeP2.z, rest2.z, 11, dt);
+
+    this.root.updateWorldMatrix(true, false);
+    this.placePlumeSeg(this.plumeSegs[0], base, this.plumeP1);
+    this.placePlumeSeg(this.plumeSegs[1], this.plumeP1, this.plumeP2);
+  }
+
+  private placePlumeSeg(seg: THREE.Mesh, aW: THREE.Vector3, bW: THREE.Vector3): void {
+    const a = SCRATCH_F.copy(aW);
+    const bL = SCRATCH_G.copy(bW);
+    this.root.worldToLocal(a);
+    this.root.worldToLocal(bL);
+    seg.position.copy(a).add(bL).multiplyScalar(0.5);
+    SCRATCH_C.copy(bL).sub(a);
+    const len = Math.max(0.02, SCRATCH_C.length());
+    seg.scale.set(1, len, 1);
+    seg.quaternion.setFromUnitVectors(UP_VEC, SCRATCH_C.normalize());
+  }
+
+  // ----------------------------------------------------- bersagli esterni
+  /** La testa segue questo punto (di solito la palla). */
+  setLookTarget(p: THREE.Vector3 | null): void {
+    if (p) {
+      this.lookPoint.copy(p);
+      this.lookTarget = this.lookPoint;
+    } else {
+      this.lookTarget = null;
+    }
+  }
+
+  /** La gamba del calcio viene risolta in IK su questo punto (palla vera). */
+  setKickTarget(p: THREE.Vector3 | null, weight = 1): void {
+    if (p) {
+      this.kickPoint.copy(p);
+      this.kickWeight = weight;
+    } else {
+      this.kickWeight = 0;
+    }
+  }
+
+  // ------------------------------------------------------------- ragdoll
+  /** Attiva il ragdoll dalla posa corrente. Ritorna true se supportato. */
+  startRagdoll(impulse: THREE.Vector3): boolean {
+    this.ragdoll ??= new VerletRagdoll();
+    const b = this.bones;
+    const grab = (bone: THREE.Bone) => bone.getWorldPosition(new THREE.Vector3());
+    const map: Record<RagdollPointName, THREE.Vector3> = {
+      head: grab(b.head),
+      chest: grab(b.chest),
+      pelvis: grab(b.pelvis),
+      handL: grab(b.handL),
+      handR: grab(b.handR),
+      footL: grab(b.footL),
+      footR: grab(b.footR),
+    };
+    this.ragdoll.start(map, impulse);
+    return true;
+  }
+
+  /** Avanza il ragdoll e applica la posa; scrive in out la posizione (x,z). */
+  updateRagdoll(dt: number, out: THREE.Vector3): boolean {
+    if (!this.ragdoll?.active) return true;
+    const settled = this.ragdoll.step(dt);
+    this.applyRagdollPose();
+    const pelvis = this.ragdoll.pos[this.ragdoll.index('pelvis')];
+    out.set(pelvis.x, 0, pelvis.z);
+    return settled;
+  }
+
+  endRagdoll(): void {
+    this.ragdoll?.stop();
+  }
+
+  /** Mappa i 7 punti verlet sulle ossa (ragdoll semplificato). */
+  private applyRagdollPose(): void {
+    const r = this.ragdoll!;
+    const b = this.bones;
+    const P = (n: RagdollPointName) => r.pos[r.index(n)];
+    this.root.updateWorldMatrix(true, false);
+
+    // bacino: posizione + inclinazione della schiena
+    const pelvisL = SCRATCH_A.copy(P('pelvis'));
+    this.root.worldToLocal(pelvisL);
+    b.pelvis.position.copy(pelvisL);
+    const spineDir = SCRATCH_B.copy(P('chest')).sub(P('pelvis'));
+    SCRATCH_C.copy(spineDir);
+    this.root.getWorldQuaternion(SCRATCH_Q).invert();
+    SCRATCH_C.applyQuaternion(SCRATCH_Q);
+    if (SCRATCH_C.lengthSq() > 1e-6) {
+      b.pelvis.quaternion.setFromUnitVectors(UP_VEC, SCRATCH_C.normalize());
+    }
+    b.spine.quaternion.identity();
+    b.chest.quaternion.identity();
+    b.neck.quaternion.identity();
+    b.head.quaternion.identity();
+
+    // arti tesi verso i punti (avambracci/tibie dritti)
+    b.forearmL.quaternion.identity();
+    b.forearmR.quaternion.identity();
+    b.shinL.quaternion.identity();
+    b.shinR.quaternion.identity();
+    aimBoneNegY(b.upperArmL, P('handL'));
+    aimBoneNegY(b.upperArmR, P('handR'));
+    aimBoneNegY(b.thighL, P('footL'));
+    aimBoneNegY(b.thighR, P('footR'));
   }
 
   kickPose(): void {
@@ -374,3 +594,14 @@ export class SkinnedPlayerRig implements IPlayerRig {
     return this.physique.height;
   }
 }
+
+// scratch condivisi del modulo (zero allocazioni per frame)
+const SCRATCH_A = new THREE.Vector3();
+const SCRATCH_B = new THREE.Vector3();
+const SCRATCH_C = new THREE.Vector3();
+const SCRATCH_D = new THREE.Vector3();
+const SCRATCH_E = new THREE.Vector3();
+const SCRATCH_F = new THREE.Vector3();
+const SCRATCH_G = new THREE.Vector3();
+const SCRATCH_Q = new THREE.Quaternion();
+const UP_VEC = new THREE.Vector3(0, 1, 0);

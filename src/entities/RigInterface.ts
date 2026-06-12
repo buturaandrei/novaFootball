@@ -30,6 +30,14 @@ export interface IPlayerRig {
   fluxStrikePose(): void;
   /** Clip d'azione extra (solo rig skinned: esultanza, rinvio, contrasto...). */
   playActionClip?(name: 'esultanza' | 'rinvio' | 'contrasto' | 'passaggio'): void;
+  /** La testa segue questo punto (la palla); null per disattivare. */
+  setLookTarget?(p: THREE.Vector3 | null): void;
+  /** IK della gamba del calcio sul punto reale della palla (peso 0..1). */
+  setKickTarget?(p: THREE.Vector3 | null, weight?: number): void;
+  /** Ragdoll semplificato (spazzate Flux, falli violenti). */
+  startRagdoll?(impulse: THREE.Vector3): boolean;
+  updateRagdoll?(dt: number, out: THREE.Vector3): boolean;
+  endRagdoll?(): void;
 }
 
 /** Corporatura: altezza e massa relative (1 = riferimento). */

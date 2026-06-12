@@ -130,24 +130,31 @@ export class BallControl {
     if (this.pendingKick) {
       const pk = this.pendingKick;
       if (this.owner !== pk.player || pk.player.action !== 'normale') {
+        pk.player.rig.setKickTarget?.(null);
         this.pendingKick = null; // palla persa nel windup
       } else {
         pk.t -= dt;
+        // IK della gamba sul punto REALE della palla, peso crescente
+        pk.player.rig.setKickTarget?.(this.ball.position, 1 - Math.max(0, pk.t) / 0.12);
         if (pk.t <= 0) {
           this.pendingKick = null;
           this.kick(pk.player, pk.charge, pk.moveX);
+          pk.player.rig.setKickTarget?.(null);
         }
       }
     }
     if (this.pendingPass) {
       const pp = this.pendingPass;
       if (this.owner !== pp.passer || pp.passer.action !== 'normale') {
+        pp.passer.rig.setKickTarget?.(null);
         this.pendingPass = null;
       } else {
         pp.t -= dt;
+        pp.passer.rig.setKickTarget?.(this.ball.position, 1 - Math.max(0, pp.t) / 0.06);
         if (pp.t <= 0) {
           this.pendingPass = null;
           this.launchPass(pp.passer, pp.receiver, pp.lob, pp.error);
+          pp.passer.rig.setKickTarget?.(null);
         }
       }
     }

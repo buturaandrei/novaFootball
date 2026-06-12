@@ -131,6 +131,11 @@ export class AnimDriver {
     return this.current !== null;
   }
 
+  /** Fase di falcata condivisa (0..1) — usata dal foot-lock IK. */
+  get phase(): number {
+    return this.gaitPhase;
+  }
+
   get currentName(): string | null {
     return this.current?.name ?? null;
   }

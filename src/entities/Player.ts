@@ -39,7 +39,7 @@ export interface PlayerEvents {
 export type PlayerRole = 'campo' | 'portiere';
 
 /** Azioni speciali che sospendono il controllo normale del giocatore. */
-export type PlayerAction = 'normale' | 'scivolata' | 'tuffo' | 'stordito' | 'rialzo';
+export type PlayerAction = 'normale' | 'scivolata' | 'tuffo' | 'stordito' | 'ragdoll' | 'rialzo';
 
 /**
  * Giocatore: cinematica con inerzia, scatto con stamina, salto e doppio
@@ -110,15 +110,38 @@ export class Player {
     return this.action === 'normale';
   }
 
-  /** Avvia una scivolata nella direzione in cui guarda. */
-  startSlide(): void {
+  /**
+   * Avvia una scivolata nella direzione in cui guarda. `speed` opzionale
+   * per il motion warping (la corsa a terra si adatta alla distanza).
+   */
+  startSlide(speed = SLIDE_SPEED): void {
     if (this.action !== 'normale' || !this.onGround) return;
     this.action = 'scivolata';
     this.actionTimer = SLIDE_DURATION;
     this.actionTime = 0;
     const dir = this.forward();
-    this.velocity.x = dir.x * SLIDE_SPEED;
-    this.velocity.z = dir.z * SLIDE_SPEED;
+    this.velocity.x = dir.x * speed;
+    this.velocity.z = dir.z * speed;
+  }
+
+  /**
+   * Spazzato via (tiro Flux, fallo violento): ragdoll se il rig lo
+   * supporta, altrimenti il vecchio stordimento con spinta.
+   */
+  knockdown(impulse: THREE.Vector3): void {
+    if (this.action === 'ragdoll') return;
+    if (this.rig.startRagdoll?.(impulse)) {
+      this.action = 'ragdoll';
+      this.actionTimer = 2.4; // tetto di sicurezza
+      this.actionTime = 0;
+      this.velocity.set(0, 0, 0);
+      this.kickCharge = 0;
+    } else {
+      this.velocity.add(impulse);
+      this.velocity.y = Math.max(this.velocity.y, 3);
+      this.onGround = false;
+      this.stun();
+    }
   }
 
   /** Tuffo del portiere verso una velocità calcolata dall'IA. */
@@ -285,6 +308,21 @@ export class Player {
         }
         break;
       }
+      case 'ragdoll': {
+        // il corpo è governato dal verlet; la posizione di gioco segue il bacino
+        const settled = this.rig.updateRagdoll?.(dt, RAGDOLL_OUT) ?? true;
+        this.position.x = THREE.MathUtils.clamp(RAGDOLL_OUT.x, -HALF_LENGTH + PLAYER_RADIUS, HALF_LENGTH - PLAYER_RADIUS);
+        this.position.z = THREE.MathUtils.clamp(RAGDOLL_OUT.z, -HALF_WIDTH + PLAYER_RADIUS, HALF_WIDTH - PLAYER_RADIUS);
+        this.position.y = 0;
+        this.velocity.set(0, 0, 0);
+        this.onGround = true;
+        if (settled || this.actionTimer <= 0) {
+          this.rig.endRagdoll?.();
+          this.action = 'rialzo';
+          this.actionTimer = 0.55;
+        }
+        break;
+      }
       case 'rialzo':
       default: {
         this.velocity.x = 0;
@@ -335,3 +373,6 @@ export class Player {
     return out.set(Math.sin(this.facing), 0, Math.cos(this.facing));
   }
 }
+
+// scratch del modulo per il ritorno di posizione del ragdoll
+const RAGDOLL_OUT = new THREE.Vector3();

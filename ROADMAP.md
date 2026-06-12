@@ -80,7 +80,7 @@ della milestone 5: la fase 2 li porta alla qualità "serie TV".)*
 - *Criteri*: nessun "pop" visibile nelle transizioni; il calcio connette col frame
   d'impatto; locomotion blend space (idle↔walk↔run↔sprint) guidato dalla velocità reale.
 
-### M9 — Animazione avanzata (il salto di qualità "mocap-feel")
+### M9 — Animazione avanzata (il salto di qualità "mocap-feel") ✅
 - **IK**: piedi piantati sul terreno (niente scivolamento), gamba del calcio orientata
   alla posizione REALE della palla (two-bone IK), testa/occhi look-at palla.
 - **Motion warping** sui contrasti: la scivolata si adatta alla distanza dal portatore.

@@ -283,16 +283,13 @@ export class FluxShot {
       ball.setVisibility(vis);
     }
 
-    // difensori sulla traiettoria spazzati via (ragdoll semplificato)
+    // difensori sulla traiettoria spazzati via (ragdoll verlet)
     const sweepRadius = this.profile.id === 'ruggito' ? 2.4 : 1.4;
     for (const p of d.teams[1 - this.shooterTeam].fieldPlayers) {
       if (p.action !== 'normale') continue;
       if (p.position.distanceTo(ball.position) < sweepRadius) {
         const away = this.tmpB.copy(p.position).sub(ball.position).setY(0).normalize();
-        p.velocity.addScaledVector(away, 10);
-        p.velocity.y = 5.5;
-        p.onGround = false;
-        p.stun();
+        p.knockdown(new THREE.Vector3(away.x * 10, 5.5, away.z * 10));
         d.particles.burst(p.position.clone().setY(1), {
           count: 14, color: this.profile.color, speed: 5, life: 0.5, size: 1.2, gravity: 5,
         });
