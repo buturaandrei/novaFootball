@@ -102,8 +102,9 @@ for (let attempt = 0; attempt < 3 && !passReceived; attempt++) {
     const passer = g.teams[0].fieldPlayers[3];
     g.ballControl.givePossession(passer);
     window.__passer = passer;
-    const ok = g.ballControl.pass(passer, null, false);
-    return ok && g.ball.velocity.length() > 8;
+    // il passaggio è programmato sul keyframe d'impatto della clip (M8):
+    // qui si verifica solo che sia stato innescato, il volo arriva subito dopo
+    return g.ballControl.pass(passer, null, false);
   });
   if (!passLaunched) continue;
   try {

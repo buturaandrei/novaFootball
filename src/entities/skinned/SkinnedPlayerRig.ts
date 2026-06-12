@@ -5,6 +5,7 @@ import type { IPlayerRig, Physique } from '../RigInterface';
 import type { RigColors } from '../PlayerRig';
 import type { FluxProfileId } from '../../flux/FluxProfile';
 import { makeOutlineMaterial, makeToonGradient } from './toon';
+import { AnimDriver } from './AnimDriver';
 
 /** Corporature per energia: GELO slanciati, OMBRA affilati, RUGGITO massicci. */
 export const PHYSIQUES: Record<FluxProfileId, Physique> = {
@@ -107,7 +108,7 @@ export class SkinnedPlayerRig implements IPlayerRig {
   private bones = {} as Record<BoneName, THREE.Bone>;
   private restPelvisY: number;
   private glowMaterial: THREE.MeshStandardMaterial;
-  private runPhase = Math.random() * Math.PI * 2;
+  private driver!: AnimDriver;
   private physique: Physique;
 
   constructor(colors: RigColors, physique: Physique = { height: 1, bulk: 1 }) {
@@ -186,6 +187,7 @@ export class SkinnedPlayerRig implements IPlayerRig {
     body.bind(skeleton);
     body.frustumCulled = false; // le pose estreme escono dal bounding statico
     this.root.add(body);
+    this.driver = new AnimDriver(body, this.restPelvisY);
 
     const outline = new THREE.SkinnedMesh(merged, makeOutlineMaterial(0.018 * B));
     outline.bind(skeleton, body.bindMatrix);
@@ -249,115 +251,66 @@ export class SkinnedPlayerRig implements IPlayerRig {
   }
 
   // -------------------------------------------------------------- animazione
-  animate(dt: number, speed: number, maxSpeed: number, onGround: boolean, verticalVel: number, kickCharge: number): void {
-    const b = this.bones;
-    const r = Math.min(1, speed / maxSpeed);
-
-    if (onGround) {
-      this.runPhase += dt * (4 + speed * 1.6);
-      const swing = r * 0.95;
-      const s = Math.sin(this.runPhase);
-      const c = Math.cos(this.runPhase);
-
-      // gambe con flessione del ginocchio nel recupero
-      b.thighL.rotation.x = s * swing;
-      b.thighR.rotation.x = -s * swing;
-      b.shinL.rotation.x = -Math.max(0, c) * swing * 1.35;
-      b.shinR.rotation.x = -Math.max(0, -c) * swing * 1.35;
-      b.footL.rotation.x = -b.thighL.rotation.x * 0.35 - b.shinL.rotation.x * 0.55;
-      b.footR.rotation.x = -b.thighR.rotation.x * 0.35 - b.shinR.rotation.x * 0.55;
-
-      // braccia opposte, gomito sempre un po' flesso
-      b.upperArmL.rotation.x = -s * swing * 0.8;
-      b.upperArmR.rotation.x = s * swing * 0.8;
-      b.upperArmL.rotation.z = 0.12;
-      b.upperArmR.rotation.z = -0.12;
-      b.forearmL.rotation.x = -(0.25 + Math.max(0, s) * 0.55) * Math.max(r, 0.15);
-      b.forearmR.rotation.x = -(0.25 + Math.max(0, -s) * 0.55) * Math.max(r, 0.15);
-
-      // busto: inclinazione, contro-rotazione, bob del bacino, respiro da fermi
-      b.spine.rotation.x = r * 0.2;
-      b.chest.rotation.y = s * 0.1 * r;
-      b.chest.rotation.x = r < 0.05 ? Math.sin(this.runPhase * 0.4) * 0.025 : 0;
-      b.pelvis.rotation.y = -s * 0.06 * r;
-      b.pelvis.rotation.x = 0;
-      b.pelvis.rotation.z = 0;
-      b.pelvis.position.y = this.restPelvisY + Math.abs(s) * 0.05 * r;
-      b.head.rotation.x = -r * 0.12;
-    } else {
-      // posa aerea: gambe raccolte asimmetriche, braccia aperte
-      const rising = verticalVel > 0;
-      const tgt = rising ? 1.0 : 0.45;
-      b.thighL.rotation.x = damp(b.thighL.rotation.x, tgt * 0.9, 10, dt);
-      b.thighR.rotation.x = damp(b.thighR.rotation.x, tgt * 0.5, 10, dt);
-      b.shinL.rotation.x = damp(b.shinL.rotation.x, -0.9 * tgt, 10, dt);
-      b.shinR.rotation.x = damp(b.shinR.rotation.x, -0.6 * tgt, 10, dt);
-      b.upperArmL.rotation.z = damp(b.upperArmL.rotation.z, 1.1, 10, dt);
-      b.upperArmR.rotation.z = damp(b.upperArmR.rotation.z, -1.1, 10, dt);
-      b.spine.rotation.x = damp(b.spine.rotation.x, rising ? -0.12 : 0.1, 8, dt);
-      b.pelvis.position.y = this.restPelvisY;
-    }
-
-    // carica del tiro: torsione del busto, gamba destra arretrata
-    if (kickCharge > 0) {
-      const k = Math.min(1, kickCharge);
-      b.spine.rotation.y = damp(b.spine.rotation.y, -0.5 * k, 12, dt);
-      b.thighR.rotation.x = -1.0 * k;
-      b.shinR.rotation.x = -0.45 * k;
-      b.upperArmR.rotation.x = 0.7 * k;
-    } else {
-      b.spine.rotation.y = damp(b.spine.rotation.y, 0, 12, dt);
+  animate(
+    dt: number,
+    speed: number,
+    maxSpeed: number,
+    onGround: boolean,
+    verticalVel: number,
+    kickCharge: number,
+    forward?: number,
+    side?: number,
+  ): void {
+    // si torna alla locomozione: le azioni "tenute" vengono rilasciate
+    this.driver.releaseHold(0.18);
+    this.driver.update(dt, {
+      speed,
+      maxSpeed,
+      onGround,
+      forward: forward ?? speed,
+      side: side ?? 0,
+      charge: kickCharge,
+    });
+    // pitch aereo additivo post-mixer (salita/caduta)
+    if (!onGround) {
+      this.bones.spine.rotateX(verticalVel > 0 ? -0.08 : 0.12);
     }
   }
 
   kickPose(): void {
-    const b = this.bones;
-    b.thighR.rotation.x = 1.35;
-    b.shinR.rotation.x = -0.1;
-    b.upperArmL.rotation.x = 0.8;
+    this.driver.playOneShot('calcio', 0.05);
+  }
+
+  playActionClip(name: 'esultanza' | 'rinvio' | 'contrasto' | 'passaggio'): void {
+    this.driver.playOneShot(name, 0.07, name === 'esultanza' ? 2 : 1);
   }
 
   slidePose(dt: number): void {
-    const b = this.bones;
-    b.pelvis.rotation.x = damp(b.pelvis.rotation.x, -1.15, 18, dt);
-    b.pelvis.position.y = damp(b.pelvis.position.y, this.restPelvisY - 0.5, 18, dt);
-    b.thighL.rotation.x = damp(b.thighL.rotation.x, 1.55, 18, dt);
-    b.shinL.rotation.x = damp(b.shinL.rotation.x, -0.1, 18, dt);
-    b.thighR.rotation.x = damp(b.thighR.rotation.x, 1.0, 18, dt);
-    b.shinR.rotation.x = damp(b.shinR.rotation.x, -0.7, 18, dt);
-    b.upperArmL.rotation.x = -0.6;
-    b.upperArmR.rotation.x = -0.9;
+    this.driver.ensureHold('scivolata');
+    this.driver.update(dt, null);
   }
 
-  divePose(side: number, dt: number): void {
-    const b = this.bones;
-    b.pelvis.rotation.z = damp(b.pelvis.rotation.z, side * 1.25, 14, dt);
-    b.pelvis.rotation.x = damp(b.pelvis.rotation.x, -0.2, 14, dt);
-    const reach = side >= 0 ? b.upperArmL : b.upperArmR;
-    const other = side >= 0 ? b.upperArmR : b.upperArmL;
-    reach.rotation.z = damp(reach.rotation.z, side * 2.7, 16, dt);
-    other.rotation.z = damp(other.rotation.z, side * 1.6, 16, dt);
-    reach.rotation.x = 0;
-    b.thighL.rotation.x = 0.4;
-    b.thighR.rotation.x = -0.3;
+  divePose(side: number, dt: number, high = false): void {
+    this.driver.ensureHold(`tuffo${high ? 'Alto' : 'Basso'}${side >= 0 ? 'L' : 'R'}`);
+    this.driver.update(dt, null);
   }
 
-  stunPose(time: number): void {
-    const b = this.bones;
-    b.pelvis.rotation.x = 0.25 + Math.sin(time * 14) * 0.08;
-    b.pelvis.rotation.z = Math.sin(time * 9) * 0.12;
-    b.upperArmL.rotation.z = 0.5;
-    b.upperArmR.rotation.z = -0.5;
+  stunPose(time: number, dt = 1 / 60): void {
+    void time;
+    this.driver.ensureHold('stordito');
+    this.driver.update(dt, null);
   }
 
   recoverPose(dt: number): void {
-    for (const name of BONE_NAMES) {
-      const bone = this.bones[name];
-      bone.rotation.x = damp(bone.rotation.x, 0, 10, dt);
-      bone.rotation.y = damp(bone.rotation.y, 0, 10, dt);
-      bone.rotation.z = damp(bone.rotation.z, 0, 10, dt);
+    // dalla terra (scivolata/tuffo) si rialza con la clip dedicata;
+    // negli altri casi basta il crossfade verso la locomozione
+    const from = this.driver.currentName;
+    if (from && (from === 'scivolata' || from.startsWith('tuffo'))) {
+      this.driver.playOneShot('rialzo', 0.06);
+    } else {
+      this.driver.releaseHold(0.14);
     }
-    this.bones.pelvis.position.y = damp(this.bones.pelvis.position.y, this.restPelvisY, 10, dt);
+    this.driver.update(dt, null);
   }
 
   // --------------------------------------------------- coreografie Flux

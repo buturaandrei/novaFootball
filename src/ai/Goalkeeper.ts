@@ -241,6 +241,7 @@ export class Goalkeeper {
       }
     }
     if (!best) best = this.team.fieldPlayers[0];
+    gk.rig.playActionClip?.('rinvio');
     this.ballControl.throwTo(best);
     this.events.onDistribute?.(gk, best);
     this.state = 'posizione';

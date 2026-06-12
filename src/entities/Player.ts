@@ -61,6 +61,8 @@ export class Player {
   actionTimer = 0;
   /** Lato del tuffo (-1/+1) per la posa del rig. */
   diveSide = 1;
+  /** Tuffo alto (sopra la cintola) per la scelta della clip. */
+  diveHigh = false;
   /** Posizione di formazione assegnata (riferimento per kickoff e IA). */
   readonly homePosition = new THREE.Vector3();
   /** Boost di velocità temporaneo (scatto Flux). */
@@ -129,7 +131,13 @@ export class Player {
     this.diveSide = Math.sign(
       vel.x * Math.cos(this.facing) - vel.z * Math.sin(this.facing),
     ) || 1;
+    this.diveHigh = vel.y > 4;
     this.onGround = false;
+  }
+
+  /** Esultanza dopo il goal (clip dedicata sul rig skinned). */
+  celebrate(): void {
+    this.rig.playActionClip?.('esultanza');
   }
 
   /** Stordimento dopo un fallo subito. */
@@ -222,7 +230,12 @@ export class Player {
         }
       }
     } else {
-      this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge);
+      // componenti della velocità nello spazio locale (per retro/laterali)
+      const sinF = Math.sin(this.facing);
+      const cosF = Math.cos(this.facing);
+      const fwd = this.velocity.x * sinF + this.velocity.z * cosF;
+      const side = this.velocity.x * cosF - this.velocity.z * sinF;
+      this.rig.animate(dt, speed, SPRINT_SPEED, this.onGround, this.velocity.y, this.kickCharge, fwd, side);
     }
   }
 
@@ -252,7 +265,7 @@ export class Player {
       }
       case 'tuffo': {
         this.integrate(dt);
-        this.rig.divePose(this.diveSide, dt);
+        this.rig.divePose(this.diveSide, dt, this.diveHigh);
         if (this.actionTimer <= 0 && this.onGround) {
           this.action = 'rialzo';
           this.actionTimer = GETUP_DURATION + 0.15;
@@ -265,7 +278,7 @@ export class Player {
         this.velocity.x *= f;
         this.velocity.z *= f;
         this.integrate(dt);
-        this.rig.stunPose(this.actionTime);
+        this.rig.stunPose(this.actionTime, dt);
         if (this.actionTimer <= 0) {
           this.action = 'rialzo';
           this.actionTimer = GETUP_DURATION * 0.5;

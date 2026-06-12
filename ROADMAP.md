@@ -67,7 +67,7 @@ della milestone 5: la fase 2 li porta alla qualità "serie TV".)*
 - *Criteri*: 14 giocatori skinned a 60 fps su hardware medio; silhouette leggibile
   in cel-shading; nessuna compenetrazione evidente alle pose estreme.
 
-### M8 — Sistema di animazione scheletrica
+### M8 — Sistema di animazione scheletrica ✅
 - **Clip di animazione keyframe definite in codice** (`AnimationClip` generati):
   idle (respiro+peso), camminata, corsa, sprint (lean accentuato), calcio leggero,
   calcio caricato (wind-up→strike→follow-through), passaggio, scivolata, contrasto,

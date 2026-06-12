@@ -387,7 +387,11 @@ export class Game {
     // goal → messaggio, boato, orbita celebrativa, esplosione di particelle
     this.match.events.onGoal = (scoringTeam, ballPos) => {
       const teamName = scoringTeam >= 0 ? this.teams[scoringTeam].name : '';
-      if (scoringTeam >= 0) this.fluxSystems[scoringTeam].creditGoal();
+      if (scoringTeam >= 0) {
+        this.fluxSystems[scoringTeam].creditGoal();
+        // la squadra che ha segnato esulta (clip dedicata sul rig skinned)
+        for (const p of this.teams[scoringTeam].fieldPlayers) p.celebrate();
+      }
       this.arena.crowd.cheer();
       this.hud.showMessage(`GOAL! ${teamName}`, 2.8);
       this.hud.setScore(this.match);

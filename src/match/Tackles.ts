@@ -49,7 +49,8 @@ export class Tackles {
     const dir = tackler.forward(this.tmpA);
     tackler.velocity.x += dir.x * TACKLE_LUNGE;
     tackler.velocity.z += dir.z * TACKLE_LUNGE;
-    tackler.rig.kickPose();
+    if (tackler.rig.playActionClip) tackler.rig.playActionClip('contrasto');
+    else tackler.rig.kickPose();
     this.active.push({ player: tackler, type: 'piedi', timer: TACKLE_WINDOW, resolved: false });
     this.cooldowns.set(tackler, TACKLE_COOLDOWN);
     return true;

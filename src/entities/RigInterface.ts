@@ -15,16 +15,21 @@ export interface IPlayerRig {
     onGround: boolean,
     verticalVel: number,
     kickCharge: number,
+    /** Componenti della velocità nello spazio locale (avanti / laterale). */
+    forward?: number,
+    side?: number,
   ): void;
   kickPose(): void;
   slidePose(dt: number): void;
-  divePose(side: number, dt: number): void;
-  stunPose(time: number): void;
+  divePose(side: number, dt: number, high?: boolean): void;
+  stunPose(time: number, dt?: number): void;
   recoverPose(dt: number): void;
   fluxSpinPose(t01: number): void;
   fluxChargePose(t01: number): void;
   fluxWindupPose(t01: number, dt: number): void;
   fluxStrikePose(): void;
+  /** Clip d'azione extra (solo rig skinned: esultanza, rinvio, contrasto...). */
+  playActionClip?(name: 'esultanza' | 'rinvio' | 'contrasto' | 'passaggio'): void;
 }
 
 /** Corporatura: altezza e massa relative (1 = riferimento). */

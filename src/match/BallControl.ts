@@ -51,6 +51,13 @@ export class BallControl {
   events: BallControlEvents = {};
 
   private cooldowns = new Map<Player, number>();
+  /**
+   * Sincronizzazione col rig: il calcio/passaggio viene ESEGUITO sul
+   * keyframe d'impatto della clip (0.12s il tiro, 0.06s il passaggio),
+   * non all'istante dell'input — la palla parte quando il piede connette.
+   */
+  private pendingKick: { player: Player; charge: number; moveX: number; t: number } | null = null;
+  private pendingPass: { passer: Player; receiver: Player; lob: boolean; error: number; t: number } | null = null;
 
   // scratch
   private tmpA = new THREE.Vector3();
@@ -92,25 +99,57 @@ export class BallControl {
     this.updatePossession();
     this.updateDribble(dt);
     this.deflectOffBodies();
+    this.updatePending(dt);
 
     // la carica del tiro è permessa solo al giocatore attivo in possesso
-    if (this.owner === activePlayer) {
+    // (e non mentre un calcio/passaggio è già in esecuzione)
+    if (this.owner === activePlayer && !this.pendingKick && !this.pendingPass) {
       if (kickHeld) {
         this.charging = true;
         this.charge = Math.min(1, this.charge + dt / KICK_CHARGE_TIME);
       }
       if (kickReleased && this.charging) {
-        this.kick(activePlayer, this.charge, moveX);
+        // innesca la clip subito, la palla parte sul frame d'impatto
+        activePlayer.rig.kickPose();
+        this.pendingKick = { player: activePlayer, charge: this.charge, moveX, t: 0.12 };
         this.charging = false;
         this.charge = 0;
       }
-    } else {
+    } else if (this.owner !== activePlayer) {
       this.charging = false;
       this.charge = 0;
     }
     activePlayer.kickCharge = this.owner === activePlayer && this.charging ? this.charge : 0;
     for (const p of this.players) {
       if (p !== activePlayer) p.kickCharge = 0;
+    }
+  }
+
+  /** Esegue calcio/passaggio programmati quando il piede connette. */
+  private updatePending(dt: number): void {
+    if (this.pendingKick) {
+      const pk = this.pendingKick;
+      if (this.owner !== pk.player || pk.player.action !== 'normale') {
+        this.pendingKick = null; // palla persa nel windup
+      } else {
+        pk.t -= dt;
+        if (pk.t <= 0) {
+          this.pendingKick = null;
+          this.kick(pk.player, pk.charge, pk.moveX);
+        }
+      }
+    }
+    if (this.pendingPass) {
+      const pp = this.pendingPass;
+      if (this.owner !== pp.passer || pp.passer.action !== 'normale') {
+        this.pendingPass = null;
+      } else {
+        pp.t -= dt;
+        if (pp.t <= 0) {
+          this.pendingPass = null;
+          this.launchPass(pp.passer, pp.receiver, pp.lob, pp.error);
+        }
+      }
     }
   }
 
@@ -125,6 +164,8 @@ export class BallControl {
     this.setOwner(null);
     this.charging = false;
     this.charge = 0;
+    this.pendingKick = null;
+    this.pendingPass = null;
     for (const p of cooldownPlayers) this.cooldowns.set(p, KICK_COOLDOWN * 1.6);
   }
 
@@ -139,6 +180,8 @@ export class BallControl {
   /** Il portiere blocca la palla in presa. */
   hold(gk: Player): void {
     this.heldBy = gk;
+    this.pendingKick = null;
+    this.pendingPass = null;
     this.setOwner(null);
     this.charging = false;
     this.charge = 0;
@@ -169,6 +212,8 @@ export class BallControl {
   /** Imposta direttamente il possesso (es. battuta di punizione). */
   givePossession(p: Player): void {
     this.heldBy = null;
+    this.pendingKick = null;
+    this.pendingPass = null;
     this.cooldowns.delete(p);
     this.setOwner(p);
     const fwd = p.forward(this.tmpA);
@@ -275,7 +320,6 @@ export class BallControl {
     this.ball.kick(vel, spin);
     this.setOwner(null);
     this.cooldowns.set(player, KICK_COOLDOWN);
-    player.rig.kickPose();
 
     this.events.onKick?.({ player, power: charge, level, velocity: vel.clone() });
   }
@@ -286,18 +330,25 @@ export class BallControl {
    * `lob` = filtrante alto con traiettoria balistica oltre il ricevitore.
    */
   pass(passer: Player, preferDir: THREE.Vector3 | null, lob: boolean): boolean {
-    if (this.owner !== passer) return false;
+    if (this.owner !== passer || this.pendingKick || this.pendingPass) return false;
     const receiver = this.choosePassTarget(passer, preferDir, lob);
     if (!receiver) return false;
-    this.launchPass(passer, receiver, lob);
+    this.schedulePass(passer, receiver, lob, 0);
     return true;
   }
 
   /** Passaggio dell'IA verso un ricevitore esplicito, con errore di mira. */
   passTo(passer: Player, receiver: Player, lob: boolean, errorAngle = 0): boolean {
-    if (this.owner !== passer) return false;
-    this.launchPass(passer, receiver, lob, errorAngle);
+    if (this.owner !== passer || this.pendingKick || this.pendingPass) return false;
+    this.schedulePass(passer, receiver, lob, errorAngle);
     return true;
+  }
+
+  /** Innesca la clip e programma il rilascio sul frame d'impatto. */
+  private schedulePass(passer: Player, receiver: Player, lob: boolean, error: number): void {
+    if (passer.rig.playActionClip) passer.rig.playActionClip('passaggio');
+    else passer.rig.kickPose();
+    this.pendingPass = { passer, receiver, lob, error, t: 0.06 };
   }
 
   /**
@@ -394,7 +445,6 @@ export class BallControl {
 
     this.setOwner(null);
     this.cooldowns.set(passer, KICK_COOLDOWN);
-    passer.rig.kickPose();
     this.events.onPass?.({ passer, receiver, lob });
   }
 }
