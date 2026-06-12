@@ -74,3 +74,14 @@ Fase 1 (M1–M6) completata; fase 2 in corso: vedi `ROADMAP.md`
 (M7 ✅ corpi skinned, M8 ✅ clip+mixer, M9 IK/ragdoll, M10 look serie TV,
 M11 aure a nastri, M12 regia finale). Il criterio d'oro: ogni mossa Flux
 riconoscibile in silhouette, 60 fps su hardware medio.
+
+## Politica MCP
+
+- MCP attivi: GitHub (deploy/PR, fornito dall'ambiente). Nessun MCP di
+  generazione asset (Meshy/Tripo/Higgsfield & co.): richiedono API key e
+  rete fuori allowlist, e gli asset generati (mesh dense fotorealistiche)
+  stonano col linguaggio cel-shaded del gioco.
+- Per "3D già pronto" il canale è: asset CC0 da GitHub (Kenney, Quaternius),
+  scaricabili direttamente — vedi politica di riuso sopra.
+- Se in futuro serve generazione AI: l'utente aggiunge il server MCP con la
+  sua key nelle impostazioni dell'ambiente; va vagliato come ogni dipendenza.
