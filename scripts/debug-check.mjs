@@ -1,0 +1,11 @@
+import { chromium } from 'playwright';
+const browser = await chromium.launch({ args: ['--enable-unsafe-swiftshader'] });
+const page = await browser.newPage({ viewport: { width: 800, height: 450 } });
+const errs = [];
+page.on('pageerror', (e) => errs.push(String(e)));
+await page.goto('http://localhost:4517/?io=gelo&avversario=ombra&debug=1', { waitUntil: 'networkidle' });
+await page.waitForFunction(() => !!window.__nova, undefined, { timeout: 20000 });
+await page.waitForTimeout(2000);
+const hasGui = await page.evaluate(() => !!document.querySelector('.lil-gui'));
+console.log('pannello debug:', hasGui ? 'OK' : 'ASSENTE', '| errori:', errs.length ? errs : 'nessuno');
+await browser.close();

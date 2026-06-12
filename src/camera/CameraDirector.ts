@@ -126,7 +126,7 @@ export class CameraDirector {
       return;
     }
 
-    let targetFov = 55;
+    let targetFov: number;
     let posLambda = 3.2;
     let lookLambda = 5.5;
 

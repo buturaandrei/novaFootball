@@ -1,5 +1,6 @@
 import { Game, type GameConfig } from './core/Game';
 import { showMenu } from './ui/Menu';
+import { maybeShowDebugPanel } from './ui/DebugPanel';
 import { setSkinnedRig } from './entities/rigMode';
 import type { FluxProfileId } from './flux/FluxProfile';
 import type { DifficultyName } from './ai/Difficulty';
@@ -77,6 +78,7 @@ async function boot(): Promise<void> {
   (window as unknown as { __nova: Game }).__nova = game;
   game.start();
   game.beginMatch();
+  void maybeShowDebugPanel(game);
 }
 
 void boot();
